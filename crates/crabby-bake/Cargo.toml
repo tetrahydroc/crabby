@@ -1,0 +1,27 @@
+[package]
+name = "crabby-bake"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Bake orchestrator — ties pck, detokenizer, parser, rewriter, scanner, pack."
+
+[lints]
+workspace = true
+
+[dependencies]
+crabby-error.workspace = true
+crabby-pck.workspace = true
+crabby-detokenizer.workspace = true
+crabby-parser.workspace = true
+crabby-rewriter.workspace = true
+crabby-pack.workspace = true
+crabby-manifest.workspace = true
+crabby-scanner.workspace = true
+crabby-platform.workspace = true
+tracing.workspace = true
+serde = { workspace = true }
+serde_json.workspace = true
+sha2 = { workspace = true }

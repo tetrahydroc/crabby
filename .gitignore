@@ -1,0 +1,11 @@
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+# Local-only test artifacts
+/tests/fixtures/local/
+/bake-output/
+
+# One-shot debug / probe scripts (per-developer, never shipped)
+/scratch/
+/Scripts/

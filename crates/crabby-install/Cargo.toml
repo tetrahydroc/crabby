@@ -1,0 +1,23 @@
+[package]
+name = "crabby-install"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Install / uninstall the crabby runtime into an RTV game directory."
+
+[lints]
+workspace = true
+
+[dependencies]
+crabby-error.workspace = true
+crabby-bake.workspace = true
+crabby-mod-analyzer.workspace = true
+crabby-rewriter.workspace = true
+crabby-pack.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2 = { workspace = true }

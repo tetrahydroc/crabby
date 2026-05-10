@@ -1,0 +1,22 @@
+[package]
+name = "crabby-rewriter"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Parsed script + wrapper template → rewritten GDScript source."
+
+[lints]
+workspace = true
+
+[dependencies]
+crabby-error.workspace = true
+crabby-parser.workspace = true
+regex.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+crabby-detokenizer.workspace = true
+crabby-pck.workspace = true

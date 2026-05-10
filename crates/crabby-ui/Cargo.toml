@@ -1,0 +1,48 @@
+[package]
+name = "crabby-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "iced-based launcher UI for crabby-loader."
+
+# Workspace-wide lints (`unsafe_code = "forbid"`) are inherited
+# manually here so we can downgrade `unsafe_code` to `deny`. The only
+# unsafe in this crate is the focused `AttachConsole` call in main.rs
+# (Windows, release-only) which carries an `#[allow(unsafe_code)]`
+# override. Don't add any other unsafe without scrutiny.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[[bin]]
+name = "crabby"
+path = "src/main.rs"
+
+[dependencies]
+crabby-error.workspace = true
+crabby-bake.workspace = true
+crabby-cli.workspace = true
+crabby-install.workspace = true
+crabby-config.workspace = true
+crabby-manifest.workspace = true
+crabby-modworkshop.workspace = true
+crabby-modpack.workspace = true
+crabby-mod-analyzer.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+serde_json.workspace = true
+iced.workspace = true
+rfd.workspace = true
+directories.workspace = true
+toml.workspace = true
+serde.workspace = true
+tokio.workspace = true
+opener = { version = "0.7", features = ["reveal"] }
+image.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true

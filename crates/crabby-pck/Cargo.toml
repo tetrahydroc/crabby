@@ -1,0 +1,17 @@
+[package]
+name = "crabby-pck"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Reader for Godot PCK archives."
+
+[lints]
+workspace = true
+
+[dependencies]
+crabby-error.workspace = true
+tracing.workspace = true
+md-5 = { workspace = true }

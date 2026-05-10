@@ -1,0 +1,24 @@
+[package]
+name = "crabby-modworkshop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "ModWorkshop API client for crabby-loader."
+
+[lints]
+workspace = true
+
+[dependencies]
+crabby-error.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+tokio = { workspace = true, features = ["sync", "time"] }
+semver = "1"
+directories.workspace = true
+async-trait = "0.1"

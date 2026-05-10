@@ -1,0 +1,19 @@
+[package]
+name = "crabby-config"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "mod_config.toml parsing + mod-archive discovery."
+
+[lints]
+workspace = true
+
+[dependencies]
+crabby-error.workspace = true
+crabby-manifest.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+zip.workspace = true

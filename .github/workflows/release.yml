@@ -1,0 +1,132 @@
+name: release
+
+on:
+  push:
+    branches: [master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+# A release is created with the tag `v<cargo-version>-<short-sha>`.
+# Only one release runs at a time per branch so concurrent pushes don't
+# race on tag creation.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  # Resolve the version + tag once, share with both build jobs.
+  resolve-version:
+    name: resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.derive.outputs.version }}
+      tag: ${{ steps.derive.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive version + tag
+        id: derive
+        run: |
+          # Cargo.toml's [workspace.package] version drives every crate.
+          version=$(grep -m1 '^version' Cargo.toml | sed -E 's/version *= *"([^"]+)".*/\1/')
+          short_sha=$(git rev-parse --short HEAD)
+          tag="v${version}-${short_sha}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version=${version} tag=${tag}"
+
+  build:
+    name: build (${{ matrix.os }})
+    needs: resolve-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact-name: crabby-linux-x86_64
+            binary: crabby
+            asset: crabby-linux-x86_64.tar.gz
+          - os: windows-latest
+            artifact-name: crabby-windows-x86_64
+            binary: crabby.exe
+            asset: crabby-windows-x86_64.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Distinct cache from CI so release builds don't fight for
+          # cache space with debug builds.
+          key: release-${{ matrix.os }}
+
+      - name: cargo build --release -p crabby-ui
+        run: cargo build --release -p crabby-ui
+
+      - name: Package (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          mkdir -p dist
+          cp target/release/${{ matrix.binary }} dist/
+          cp README.md dist/ 2>/dev/null || true
+          cd dist
+          tar -czf ../${{ matrix.asset }} *
+
+      - name: Package (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/${{ matrix.binary }} dist/
+          if (Test-Path README.md) { Copy-Item README.md dist/ }
+          Compress-Archive -Path dist/* -DestinationPath ${{ matrix.asset }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: ${{ matrix.asset }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish release
+    needs: [resolve-version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve-version.outputs.tag }}
+          name: ${{ needs.resolve-version.outputs.tag }}
+          body: |
+            Automated release for commit ${{ github.sha }}.
+
+            Built from `master` at workspace version `${{ needs.resolve-version.outputs.version }}`.
+
+            ## Downloads
+
+            - **Windows**: `crabby-windows-x86_64.zip`
+            - **Linux**: `crabby-linux-x86_64.tar.gz`
+
+            See [README](https://github.com/${{ github.repository }}/blob/${{ github.sha }}/README.md) for install steps.
+          files: |
+            artifacts/crabby-linux-x86_64/crabby-linux-x86_64.tar.gz
+            artifacts/crabby-windows-x86_64/crabby-windows-x86_64.zip
+          draft: false
+          prerelease: true
+          fail_on_unmatched_files: true

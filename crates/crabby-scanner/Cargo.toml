@@ -1,0 +1,17 @@
+[package]
+name = "crabby-scanner"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Token-level security scanner. Hard-blocks mods that violate the crabby API contract."
+
+[lints]
+workspace = true
+
+[dependencies]
+crabby-error.workspace = true
+crabby-parser.workspace = true
+tracing.workspace = true

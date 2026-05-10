@@ -1,0 +1,96 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/crabby-error",
+    "crates/crabby-platform",
+    "crates/crabby-pck",
+    "crates/crabby-detokenizer",
+    "crates/crabby-parser",
+    "crates/crabby-rewriter",
+    "crates/crabby-pack",
+    "crates/crabby-manifest",
+    "crates/crabby-config",
+    "crates/crabby-scanner",
+    "crates/crabby-bake",
+    "crates/crabby-install",
+    "crates/crabby-cli",
+    "crates/crabby-modworkshop",
+    "crates/crabby-modpack",
+    "crates/crabby-mod-analyzer",
+    "crates/crabby-ui",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "MIT"
+repository = "https://github.com/tetrahydroc/crabby-loader"
+authors = ["tetrahydroc"]
+
+[workspace.dependencies]
+# Internal crates — referenced by path so a workspace-wide version bump
+# is a one-liner here.
+crabby-error = { path = "crates/crabby-error" }
+crabby-platform = { path = "crates/crabby-platform" }
+crabby-pck = { path = "crates/crabby-pck" }
+crabby-detokenizer = { path = "crates/crabby-detokenizer" }
+crabby-parser = { path = "crates/crabby-parser" }
+crabby-rewriter = { path = "crates/crabby-rewriter" }
+crabby-pack = { path = "crates/crabby-pack" }
+crabby-manifest = { path = "crates/crabby-manifest" }
+crabby-config = { path = "crates/crabby-config" }
+crabby-scanner = { path = "crates/crabby-scanner" }
+crabby-bake = { path = "crates/crabby-bake" }
+crabby-install = { path = "crates/crabby-install" }
+crabby-modworkshop = { path = "crates/crabby-modworkshop" }
+crabby-modpack = { path = "crates/crabby-modpack" }
+crabby-mod-analyzer = { path = "crates/crabby-mod-analyzer" }
+crabby-cli = { path = "crates/crabby-cli" }
+
+# Third-party. Pinned to minor, actual resolution in Cargo.lock.
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+zstd = "0.13"
+regex = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+md-5 = "0.10"
+sha2 = "0.10"
+iced = { version = "0.14", default-features = false, features = ["wgpu", "tokio", "markdown", "image", "x11", "wayland"] }
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
+directories = "6"
+toml = "0.8"
+tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread"] }
+image = { version = "0.25", default-features = false, features = ["webp", "png", "jpeg"] }
+windows-sys = { version = "0.59", features = ["Win32_System_Console"] }
+base64 = "0.22"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+rust_2024_compatibility = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+
+# Allow-list, with justification per entry. Re-review when any of these
+# generates >5 hits in CI — often that's a signal the rule IS useful for us.
+module_name_repetitions = "allow"   # natural in a workspace with crabby-* prefixes
+missing_errors_doc = "allow"        # every Result-returning fn has a top-level doc already
+missing_panics_doc = "allow"        # library code forbids panics; binaries document at main
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
+panic = "abort"
+
+[profile.dev]
+# Faster iteration; full debug info stays for backtraces.
+opt-level = 0

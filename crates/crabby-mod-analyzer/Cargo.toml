@@ -1,0 +1,24 @@
+[package]
+name = "crabby-mod-analyzer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Static-pattern scanner for mod GDScript — feeds Phase B AOT compilation + conflict detection."
+
+[lints]
+workspace = true
+
+[dependencies]
+crabby-error.workspace = true
+crabby-parser.workspace = true
+crabby-config.workspace = true
+crabby-manifest.workspace = true
+regex.workspace = true
+tracing.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+zip.workspace = true

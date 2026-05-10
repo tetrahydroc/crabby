@@ -1,0 +1,18 @@
+[package]
+name = "crabby-manifest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Parse and validate mod.txt into typed ModManifest structs."
+
+[lints]
+workspace = true
+
+[dependencies]
+crabby-error.workspace = true
+serde.workspace = true
+tracing.workspace = true
+zip.workspace = true

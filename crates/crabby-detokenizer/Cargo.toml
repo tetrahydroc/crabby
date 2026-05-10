@@ -1,0 +1,20 @@
+[package]
+name = "crabby-detokenizer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "GDSC v100/v101 binary-tokenized script → GDScript source."
+
+[lints]
+workspace = true
+
+[dependencies]
+crabby-error.workspace = true
+tracing.workspace = true
+zstd.workspace = true
+
+[dev-dependencies]
+crabby-pck.workspace = true

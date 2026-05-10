@@ -1,0 +1,21 @@
+[package]
+name = "crabby-parser"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "GDScript source → typed declaration structures."
+
+[lints]
+workspace = true
+
+[dependencies]
+crabby-error.workspace = true
+tracing.workspace = true
+regex.workspace = true
+
+[dev-dependencies]
+crabby-pck.workspace = true
+crabby-detokenizer.workspace = true
