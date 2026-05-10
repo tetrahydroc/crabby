@@ -1,7 +1,7 @@
 # crabby-loader
 
 Mod loader for Road to Vostok. Bakes a modified `RTV.pck` so installed
-mods load when the game starts. Coexists with [vostok-mod-loader](../vostok-mod-loader/);
+mods load when the game starts. Coexists with [vostok-mod-loader](https://github.com/ametrocavich/vostok-mod-loader);
 pick whichever you prefer.
 
 Status: alpha. Use at your own risk; back up your save dir before installing.
