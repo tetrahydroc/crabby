@@ -23,8 +23,13 @@ fn check(name: &str) {
         .join(format!("{name}.gd"));
 
     let bytes = fs::read(&gdc).unwrap_or_else(|e| panic!("read {}: {e}", gdc.display()));
+    // Normalize CRLF to LF: .gitattributes pins fixtures to LF on
+    // checkout, but a misconfigured contributor box (or a failed
+    // attribute apply) shouldn't make the test diverge purely on
+    // line endings. Detokenizer always outputs LF.
     let expected = fs::read_to_string(&expected_path)
-        .unwrap_or_else(|e| panic!("read {}: {e}", expected_path.display()));
+        .unwrap_or_else(|e| panic!("read {}: {e}", expected_path.display()))
+        .replace("\r\n", "\n");
 
     let actual = detokenize(&bytes).expect("detokenize");
 
