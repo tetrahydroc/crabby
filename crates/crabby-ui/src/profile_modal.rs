@@ -83,7 +83,9 @@ fn header<'a>(title: String, p: Palette) -> Element<'a, crate::app::Message> {
                 left: 8.0,
             })
             .style(button_style(p, ButtonKind::Ghost))
-            .on_press(crate::app::Message::Profiles(profiles::Message::DismissModal)),
+            .on_press(crate::app::Message::Profiles(
+                profiles::Message::DismissModal
+            )),
     ]
     .spacing(8)
     .align_y(Alignment::Center)
@@ -91,16 +93,13 @@ fn header<'a>(title: String, p: Palette) -> Element<'a, crate::app::Message> {
     .into()
 }
 
-fn create_view<'a>(
-    state: &'a profiles::State,
-    p: Palette,
-) -> Element<'a, crate::app::Message> {
+fn create_view<'a>(state: &'a profiles::State, p: Palette) -> Element<'a, crate::app::Message> {
     let h = header("Create profile".into(), p);
     let input = text_input("Profile name", &state.editor_input)
-        .on_input(|s| {
-            crate::app::Message::Profiles(profiles::Message::EditorInputChanged(s))
-        })
-        .on_submit(crate::app::Message::Profiles(profiles::Message::CreateProfile))
+        .on_input(|s| crate::app::Message::Profiles(profiles::Message::EditorInputChanged(s)))
+        .on_submit(crate::app::Message::Profiles(
+            profiles::Message::CreateProfile,
+        ))
         .padding([6, 10])
         .size(12)
         .width(Length::Fill);
@@ -116,11 +115,15 @@ fn create_view<'a>(
         button(text("Cancel").size(11))
             .padding([4, 12])
             .style(button_style(p, ButtonKind::Default))
-            .on_press(crate::app::Message::Profiles(profiles::Message::DismissModal)),
+            .on_press(crate::app::Message::Profiles(
+                profiles::Message::DismissModal
+            )),
         button(text("Create").size(11))
             .padding([4, 14])
             .style(button_style(p, ButtonKind::Primary))
-            .on_press(crate::app::Message::Profiles(profiles::Message::CreateProfile)),
+            .on_press(crate::app::Message::Profiles(
+                profiles::Message::CreateProfile
+            )),
     ]
     .spacing(8)
     .align_y(Alignment::Center);
@@ -139,17 +142,14 @@ fn create_view<'a>(
         .into()
 }
 
-fn edit_view<'a>(
-    state: &'a profiles::State,
-    p: Palette,
-) -> Element<'a, crate::app::Message> {
+fn edit_view<'a>(state: &'a profiles::State, p: Palette) -> Element<'a, crate::app::Message> {
     let h = header(format!("Edit profile: {}", state.active), p);
 
     let input = text_input("Profile name", &state.editor_input)
-        .on_input(|s| {
-            crate::app::Message::Profiles(profiles::Message::EditorInputChanged(s))
-        })
-        .on_submit(crate::app::Message::Profiles(profiles::Message::RenameActive))
+        .on_input(|s| crate::app::Message::Profiles(profiles::Message::EditorInputChanged(s)))
+        .on_submit(crate::app::Message::Profiles(
+            profiles::Message::RenameActive,
+        ))
         .padding([6, 10])
         .size(12)
         .width(Length::Fill);
@@ -205,11 +205,15 @@ fn edit_view<'a>(
         button(text("Cancel").size(11))
             .padding([4, 12])
             .style(button_style(p, ButtonKind::Default))
-            .on_press(crate::app::Message::Profiles(profiles::Message::DismissModal)),
+            .on_press(crate::app::Message::Profiles(
+                profiles::Message::DismissModal
+            )),
         button(text("Save").size(11))
             .padding([4, 14])
             .style(button_style(p, ButtonKind::Primary))
-            .on_press(crate::app::Message::Profiles(profiles::Message::RenameActive)),
+            .on_press(crate::app::Message::Profiles(
+                profiles::Message::RenameActive
+            )),
     ]
     .spacing(8)
     .align_y(Alignment::Center);

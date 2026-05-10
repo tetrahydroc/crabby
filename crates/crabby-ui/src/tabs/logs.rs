@@ -16,7 +16,7 @@ use iced::widget::{button, column, container, row, scrollable, text, text_input}
 use iced::{Alignment, Element, Length};
 
 use crate::launcher_config;
-use crate::style::{button_style, surface_style, ButtonKind, SurfaceKind};
+use crate::style::{ButtonKind, SurfaceKind, button_style, surface_style};
 use crate::theme::Palette;
 
 /// One parsed log line. The raw text is kept around for the unparseable
@@ -259,9 +259,9 @@ impl State {
 
         // Level chips.
         let mk_chip = |label: &'static str,
-                      count: usize,
-                      filter: Option<LevelFilter>,
-                      tone: iced::Color|
+                       count: usize,
+                       filter: Option<LevelFilter>,
+                       tone: iced::Color|
          -> Element<'_, Message> {
             let active = self.level == filter;
             let lbl = text(format!("{label} {count}")).size(11);
@@ -295,7 +295,11 @@ impl State {
             .size(12)
             .style(move |_t, _s| iced::widget::text_input::Style {
                 background: iced::Background::Color(p.bg_2),
-                border: iced::Border { color: p.line, width: 1.0, radius: 6.0.into() },
+                border: iced::Border {
+                    color: p.line,
+                    width: 1.0,
+                    radius: 6.0.into(),
+                },
                 icon: p.fg_3,
                 placeholder: p.fg_3,
                 value: p.fg_0,
@@ -328,10 +332,7 @@ impl State {
             .collect();
 
         let body: Element<'_, Message> = if !self.populated {
-            text("Click Refresh to load.")
-                .size(12)
-                .color(p.fg_3)
-                .into()
+            text("Click Refresh to load.").size(12).color(p.fg_3).into()
         } else if self.entries.is_empty() {
             column![
                 text("Log file is empty or hasn't been written yet.")
@@ -383,9 +384,7 @@ impl State {
         // own scrollable so only the rows scroll. The footer pins to
         // the bottom.
         let top = column![header, toolbar].spacing(14);
-        let body_pane = container(body)
-            .width(Length::Fill)
-            .height(Length::Fill);
+        let body_pane = container(body).width(Length::Fill).height(Length::Fill);
         let layout = column![top, body_pane, footer]
             .spacing(14)
             .padding(20)
@@ -479,9 +478,7 @@ fn log_row<'a>(idx: usize, e: &'a LogEntry, expanded: bool, p: Palette) -> Eleme
         left: 138.0,
     };
     let mut detail_col = column![].spacing(4).padding(detail_padding);
-    detail_col = detail_col.push(
-        text(e.message.clone()).size(11).color(p.fg_0),
-    );
+    detail_col = detail_col.push(text(e.message.clone()).size(11).color(p.fg_0));
     if !e.extras.is_empty() {
         detail_col = detail_col.push(iced::widget::Space::new().height(Length::Fixed(4.0)));
         // Size the key column to the widest key so long names like
@@ -503,14 +500,19 @@ fn log_row<'a>(idx: usize, e: &'a LogEntry, expanded: bool, p: Palette) -> Eleme
             );
         }
     }
-    let detail = container(detail_col)
-        .width(Length::Fill)
-        .style(move |_t| iced::widget::container::Style {
-            background: Some(iced::Background::Color(bg)),
-            text_color: Some(p.fg_0),
-            border: iced::Border { color: p.line_soft, width: 1.0, radius: 0.0.into() },
-            ..Default::default()
-        });
+    let detail =
+        container(detail_col)
+            .width(Length::Fill)
+            .style(move |_t| iced::widget::container::Style {
+                background: Some(iced::Background::Color(bg)),
+                text_color: Some(p.fg_0),
+                border: iced::Border {
+                    color: p.line_soft,
+                    width: 1.0,
+                    radius: 0.0.into(),
+                },
+                ..Default::default()
+            });
 
     column![header_btn, detail].into()
 }
@@ -700,18 +702,11 @@ fn synthesize_analyzer_entries(view: AnalyzerView<'_>) -> Vec<LogEntry> {
             let kind_label = match c.pattern {
                 crabby_mod_analyzer::ClassicPatternKind::TakeOverPath => "take_over_path",
                 crabby_mod_analyzer::ClassicPatternKind::SetScript => "set_script",
-                crabby_mod_analyzer::ClassicPatternKind::LoadResourcePack => {
-                    "load_resource_pack"
-                }
+                crabby_mod_analyzer::ClassicPatternKind::LoadResourcePack => "load_resource_pack",
                 crabby_mod_analyzer::ClassicPatternKind::ExtendsVanilla => "extends vanilla",
-                crabby_mod_analyzer::ClassicPatternKind::PreloadVanillaScript => {
-                    "preload vanilla"
-                }
+                crabby_mod_analyzer::ClassicPatternKind::PreloadVanillaScript => "preload vanilla",
             };
-            let msg = format!(
-                "{kind_label} on {}",
-                c.target.as_deref().unwrap_or("?"),
-            );
+            let msg = format!("{kind_label} on {}", c.target.as_deref().unwrap_or("?"),);
             out.push(LogEntry {
                 raw: msg.clone(),
                 level: level.into(),
@@ -826,7 +821,11 @@ fn parse_log(text: &str) -> Vec<LogEntry> {
         }
         match serde_json::from_str::<serde_json::Value>(line) {
             Ok(v) => {
-                let level = v.get("level").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                let level = v
+                    .get("level")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 let timestamp = v
                     .get("timestamp")
                     .and_then(|x| x.as_str())
@@ -913,7 +912,8 @@ mod tests {
 
     #[test]
     fn falls_back_to_raw_for_bad_lines() {
-        let text = "not json\n{\"level\":\"ERROR\",\"fields\":{\"message\":\"crash\"},\"target\":\"x\"}\n";
+        let text =
+            "not json\n{\"level\":\"ERROR\",\"fields\":{\"message\":\"crash\"},\"target\":\"x\"}\n";
         let entries = parse_log(text);
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].level, "");
@@ -946,8 +946,14 @@ mod tests {
         let line = r#"{"timestamp":"2026-05-01T10:42:13.123Z","level":"WARN","fields":{"archive":"/games/x.vmz","error":"mod.txt missing","message":"skipping archive: mod.txt missing or unparseable"},"target":"crabby_config"}"#;
         let entries = parse_log(line);
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].extras.get("archive").map(String::as_str), Some("/games/x.vmz"));
-        assert_eq!(entries[0].extras.get("error").map(String::as_str), Some("mod.txt missing"));
+        assert_eq!(
+            entries[0].extras.get("archive").map(String::as_str),
+            Some("/games/x.vmz")
+        );
+        assert_eq!(
+            entries[0].extras.get("error").map(String::as_str),
+            Some("mod.txt missing")
+        );
         // Make sure the message itself didn't leak into extras.
         assert!(!entries[0].extras.contains_key("message"));
     }

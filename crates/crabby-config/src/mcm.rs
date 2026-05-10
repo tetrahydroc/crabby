@@ -115,8 +115,8 @@ impl McmConfig {
         if !path.is_file() {
             return Ok(None);
         }
-        let text = fs::read_to_string(path)
-            .map_err(|s| CrabbyError::io_at(path.to_path_buf(), s))?;
+        let text =
+            fs::read_to_string(path).map_err(|s| CrabbyError::io_at(path.to_path_buf(), s))?;
         let mut cfg = parse(&text).map_err(|source| CrabbyError::Config {
             context: format!("parsing MCM config at {}", path.display()),
             source,
@@ -148,8 +148,7 @@ impl McmConfig {
         };
         field.value = value;
         let rendered = render(self);
-        fs::write(&self.path, rendered)
-            .map_err(|s| CrabbyError::io_at(self.path.clone(), s))?;
+        fs::write(&self.path, rendered).map_err(|s| CrabbyError::io_at(self.path.clone(), s))?;
         Ok(())
     }
 
@@ -165,11 +164,7 @@ impl McmConfig {
                 .push(f);
         }
         for v in out.values_mut() {
-            v.sort_by(|a, b| {
-                a.menu_pos
-                    .cmp(&b.menu_pos)
-                    .then_with(|| a.key.cmp(&b.key))
-            });
+            v.sort_by(|a, b| a.menu_pos.cmp(&b.menu_pos).then_with(|| a.key.cmp(&b.key)));
         }
         out
     }
@@ -199,8 +194,7 @@ pub fn user_data_dir() -> Option<PathBuf> {
         if let Some(xdg) = std::env::var_os("XDG_DATA_HOME") {
             return Some(PathBuf::from(xdg).join("Road to Vostok"));
         }
-        std::env::var_os("HOME")
-            .map(|h| PathBuf::from(h).join(".local/share/Road to Vostok"))
+        std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share/Road to Vostok"))
     }
     #[cfg(target_os = "macos")]
     {
@@ -317,7 +311,11 @@ pub fn find_config_for_mod(mod_id: &str, mod_name: &str) -> Option<PathBuf> {
     let mut substring_hits: Vec<&PathBuf> = Vec::new();
     for (folder, path) in &candidates {
         let f = slug(folder);
-        if f.contains(&id_slug) || id_slug.contains(&f) || f.contains(&name_slug) || name_slug.contains(&f) {
+        if f.contains(&id_slug)
+            || id_slug.contains(&f)
+            || f.contains(&name_slug)
+            || name_slug.contains(&f)
+        {
             substring_hits.push(path);
         }
     }
@@ -459,8 +457,8 @@ fn field_from_dict(section: &str, key: &str, map: &BTreeMap<String, String>) -> 
     let default = coerce_for_section(parse_value(default_tok)?, section);
     let name = strip_str(map.get("name").map_or("", String::as_str)).unwrap_or_default();
     let tooltip = strip_str(map.get("tooltip").map_or("", String::as_str)).unwrap_or_default();
-    let category = strip_str(map.get("category").map_or("", String::as_str))
-        .filter(|s| !s.is_empty());
+    let category =
+        strip_str(map.get("category").map_or("", String::as_str)).filter(|s| !s.is_empty());
     let menu_pos = map
         .get("menu_pos")
         .and_then(|t| t.parse::<i64>().ok())
@@ -481,16 +479,8 @@ fn field_from_dict(section: &str, key: &str, map: &BTreeMap<String, String>) -> 
 
     // Stash any unclaimed keys so they survive write-back.
     const KNOWN: &[&str] = &[
-        "value",
-        "default",
-        "name",
-        "tooltip",
-        "category",
-        "menu_pos",
-        "minRange",
-        "maxRange",
-        "step",
-        "options",
+        "value", "default", "name", "tooltip", "category", "menu_pos", "minRange", "maxRange",
+        "step", "options",
     ];
     let passthrough: Vec<(String, String)> = map
         .iter()
@@ -579,7 +569,11 @@ fn render(cfg: &McmConfig) -> String {
         unknown_by_section.entry(u.0.clone()).or_default().push(u);
     }
 
-    let mut all_sections: Vec<String> = sections.keys().chain(unknown_by_section.keys()).cloned().collect();
+    let mut all_sections: Vec<String> = sections
+        .keys()
+        .chain(unknown_by_section.keys())
+        .cloned()
+        .collect();
     all_sections.sort();
     all_sections.dedup();
 
@@ -606,11 +600,17 @@ fn render_dict(f: &McmField) -> String {
     if let Some(cat) = &f.category {
         parts.push(format!("\"category\": \"{}\"", escape(cat)));
     }
-    parts.push(format!("&\"default\": {}", render_value(&f.default, &f.section)));
+    parts.push(format!(
+        "&\"default\": {}",
+        render_value(&f.default, &f.section)
+    ));
     parts.push(format!("&\"menu_pos\": {}", f.menu_pos));
     parts.push(format!("&\"name\": \"{}\"", escape(&f.name)));
     if !f.extras.options.is_empty() {
-        parts.push(format!("&\"options\": {}", render_str_array(&f.extras.options)));
+        parts.push(format!(
+            "&\"options\": {}",
+            render_str_array(&f.extras.options)
+        ));
     }
     if let Some(min) = f.extras.min_range {
         parts.push(format!("&\"minRange\": {}", trim_float(min)));
@@ -622,7 +622,10 @@ fn render_dict(f: &McmField) -> String {
         parts.push(format!("&\"step\": {}", trim_float(step)));
     }
     parts.push(format!("&\"tooltip\": \"{}\"", escape(&f.tooltip)));
-    parts.push(format!("&\"value\": {}", render_value(&f.value, &f.section)));
+    parts.push(format!(
+        "&\"value\": {}",
+        render_value(&f.value, &f.section)
+    ));
     for (k, v) in &f.passthrough {
         // Passthrough keys without `&` prefix, they were stored as
         // plain strings in the source, and MCM accepts both forms.
@@ -731,12 +734,20 @@ globalWeightPct={
     fn round_trip_preserves_value_change() {
         let mut cfg = parse(SAMPLE).unwrap();
         // Find and bump.
-        let f = cfg.fields.iter_mut().find(|f| f.key == "globalWeightPct").unwrap();
+        let f = cfg
+            .fields
+            .iter_mut()
+            .find(|f| f.key == "globalWeightPct")
+            .unwrap();
         f.value = McmValue::Int(50);
         let text = render(&cfg);
         let cfg2 = parse(&text).unwrap();
         assert_eq!(cfg2.fields.len(), 2);
-        let f2 = cfg2.fields.iter().find(|f| f.key == "globalWeightPct").unwrap();
+        let f2 = cfg2
+            .fields
+            .iter()
+            .find(|f| f.key == "globalWeightPct")
+            .unwrap();
         assert_eq!(f2.value, McmValue::Int(50));
     }
 
@@ -777,10 +788,17 @@ wipePressed={
 }
 "#;
         let mut cfg = parse(text).unwrap();
-        let f = cfg.fields.iter_mut().find(|f| f.key == "wipePressed").unwrap();
+        let f = cfg
+            .fields
+            .iter_mut()
+            .find(|f| f.key == "wipePressed")
+            .unwrap();
         f.value = McmValue::Bool(true);
         let rendered = render(&cfg);
-        assert!(rendered.contains("\"on_value_changed\": \"on_wipe_pressed\""), "lost callback: {rendered}");
+        assert!(
+            rendered.contains("\"on_value_changed\": \"on_wipe_pressed\""),
+            "lost callback: {rendered}"
+        );
         let cfg2 = parse(&rendered).unwrap();
         let f2 = cfg2.fields.iter().find(|f| f.key == "wipePressed").unwrap();
         assert_eq!(f2.value, McmValue::Bool(true));
@@ -790,7 +808,10 @@ wipePressed={
     #[test]
     fn slug_collapses_punctuation() {
         assert_eq!(slug("Hold-Breath"), "holdbreath");
-        assert_eq!(slug("Real-Gun-&-Attachment-Names"), "realgunattachmentnames");
+        assert_eq!(
+            slug("Real-Gun-&-Attachment-Names"),
+            "realgunattachmentnames"
+        );
         assert_eq!(slug("global-economy"), "globaleconomy");
     }
 
@@ -803,8 +824,7 @@ wipePressed={
         let Some(home) = std::env::var_os("APPDATA")
             .map(std::path::PathBuf::from)
             .or_else(|| {
-                std::env::var_os("HOME")
-                    .map(|h| std::path::PathBuf::from(h).join(".local/share"))
+                std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".local/share"))
             })
         else {
             return;
@@ -845,7 +865,11 @@ spawn_pool_bonus={
         let cfg = parse(text).unwrap();
         let f = &cfg.fields[0];
         assert_eq!(f.section, "Int");
-        assert_eq!(f.value, McmValue::Int(59), "Float 59.0 in [Int] must coerce to Int(59)");
+        assert_eq!(
+            f.value,
+            McmValue::Int(59),
+            "Float 59.0 in [Int] must coerce to Int(59)"
+        );
         assert_eq!(f.default, McmValue::Int(0));
     }
 

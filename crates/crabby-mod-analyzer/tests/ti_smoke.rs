@@ -9,7 +9,7 @@
 
 use std::path::Path;
 
-use crabby_mod_analyzer::{analyze_mod, HookKind, Resolvability};
+use crabby_mod_analyzer::{HookKind, Resolvability, analyze_mod};
 
 const TI_ROOT: &str = "/mnt/c/Users/ashou/GitHub/thc/Road to Vostok/Mods/TraderImprovements";
 
@@ -29,7 +29,11 @@ fn trader_improvements_smoke() {
         if path.extension().and_then(|e| e.to_str()) != Some("gd") {
             continue;
         }
-        let name = path.file_name().and_then(|n| n.to_str()).unwrap().to_string();
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap()
+            .to_string();
         let src = std::fs::read_to_string(&path).expect("read");
         files.push((name, src));
     }
@@ -78,8 +82,15 @@ fn trader_improvements_smoke() {
 
     // Asserts on known TI properties:
     // - Main.gd has lib.hook calls (at least 12).
-    let main_hooks = intent.hooks.iter().filter(|h| h.filename == "Main.gd").count();
-    assert!(main_hooks >= 12, "expected ≥12 hooks in Main.gd, got {main_hooks}");
+    let main_hooks = intent
+        .hooks
+        .iter()
+        .filter(|h| h.filename == "Main.gd")
+        .count();
+    assert!(
+        main_hooks >= 12,
+        "expected ≥12 hooks in Main.gd, got {main_hooks}"
+    );
     // - All those hooks have literal names, so they're static-eligible.
     let main_static = intent
         .hooks

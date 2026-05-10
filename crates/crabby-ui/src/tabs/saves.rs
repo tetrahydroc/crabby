@@ -314,20 +314,29 @@ impl State {
                 if succeeded {
                     // Show "Snapshotted ✓" for ~2.5s, then auto-clear
                     // back to the default Snapshot button.
-                    self.transient_actions.insert(key.clone(), TransientAction::SnapshotJustSucceeded);
+                    self.transient_actions
+                        .insert(key.clone(), TransientAction::SnapshotJustSucceeded);
                     return Task::perform(
                         tokio::time::sleep(std::time::Duration::from_millis(2500)),
-                        move |_| Message::ClearTransientAction { profile: key.0.clone(), slot: key.1.clone() },
+                        move |_| Message::ClearTransientAction {
+                            profile: key.0.clone(),
+                            slot: key.1.clone(),
+                        },
                     );
                 }
                 // Failure persists in-place - the banner has the
                 // detailed message; cleared by any subsequent action.
-                self.transient_actions.insert(key, TransientAction::SnapshotJustFailed);
+                self.transient_actions
+                    .insert(key, TransientAction::SnapshotJustFailed);
             }
             Message::DeleteSlot { profile, slot } => {
                 match saves::delete_slot(&profile, &slot) {
                     Ok(()) => {
-                        if self.selected_slot.as_ref().is_some_and(|(p, s)| p == &profile && s == &slot) {
+                        if self
+                            .selected_slot
+                            .as_ref()
+                            .is_some_and(|(p, s)| p == &profile && s == &slot)
+                        {
                             self.selected_slot = None;
                             self.selected_snapshots.clear();
                         }
@@ -341,7 +350,11 @@ impl State {
                 self.invalidate();
                 self.refresh(active_profile);
             }
-            Message::RequestMoveSlotToProfile { src_profile, src_slot, dst_profile } => {
+            Message::RequestMoveSlotToProfile {
+                src_profile,
+                src_slot,
+                dst_profile,
+            } => {
                 if confirm_destructive_actions {
                     // Park the requested move so the slot row replaces
                     // its pick_list cell with [✗][Confirm] in-place.
@@ -352,7 +365,11 @@ impl State {
                 } else {
                     // Confirmations off - fire the move directly.
                     return self.update(
-                        Message::MoveSlotToProfile { src_profile, src_slot, dst_profile },
+                        Message::MoveSlotToProfile {
+                            src_profile,
+                            src_slot,
+                            dst_profile,
+                        },
                         active_profile,
                         confirm_destructive_actions,
                     );
@@ -361,21 +378,31 @@ impl State {
             Message::ClearTransientAction { profile, slot } => {
                 self.transient_actions.remove(&(profile, slot));
             }
-            Message::MoveSlotToProfile { src_profile, src_slot, dst_profile } => {
-                self.transient_actions.remove(&(src_profile.clone(), src_slot.clone()));
+            Message::MoveSlotToProfile {
+                src_profile,
+                src_slot,
+                dst_profile,
+            } => {
+                self.transient_actions
+                    .remove(&(src_profile.clone(), src_slot.clone()));
                 // Same slot name on the destination side. Backend
                 // refuses if it'd collide with an existing slot there;
                 // we surface that via the error banner like the rest of
                 // the saves operations.
                 match saves::move_slot_between_profiles(
-                    &src_profile, &src_slot, &dst_profile, &src_slot,
+                    &src_profile,
+                    &src_slot,
+                    &dst_profile,
+                    &src_slot,
                 ) {
                     Ok(_report) => {
                         // Drop the selection if it pointed at the moved
                         // slot - its (profile, slot) tuple changed.
-                        if self.selected_slot.as_ref().is_some_and(
-                            |(p, s)| p == &src_profile && s == &src_slot,
-                        ) {
+                        if self
+                            .selected_slot
+                            .as_ref()
+                            .is_some_and(|(p, s)| p == &src_profile && s == &src_slot)
+                        {
                             self.selected_slot = None;
                             self.selected_snapshots.clear();
                         }
@@ -403,7 +430,11 @@ impl State {
             Message::SnapshotLabelChanged(s) => {
                 self.snapshot_label = s;
             }
-            Message::RestoreSnapshot { profile, slot, path } => {
+            Message::RestoreSnapshot {
+                profile,
+                slot,
+                path,
+            } => {
                 match saves::restore_snapshot(&profile, &slot, &path) {
                     Ok(()) => {
                         tracing::info!(target = "crabby_ui::saves", profile = %profile, slot = %slot, path = %path.display(), "restore");
@@ -510,9 +541,13 @@ impl State {
 
         // ---- Banner ----
         let scope_text = if self.show_all_profiles {
-            format!("Showing slots across all profiles. Active mod profile: `{active_profile}`. Switching the active save takes effect on RTV's next launch.")
+            format!(
+                "Showing slots across all profiles. Active mod profile: `{active_profile}`. Switching the active save takes effect on RTV's next launch."
+            )
         } else {
-            format!("Showing slots for the active mod profile (`{active_profile}`). Slot switches take effect on RTV's next launch.")
+            format!(
+                "Showing slots for the active mod profile (`{active_profile}`). Slot switches take effect on RTV's next launch."
+            )
         };
         let banner = container(text(scope_text).size(11).color(p.fg_2))
             .padding([8, 12])
@@ -609,7 +644,9 @@ impl State {
         let header = row![
             text("VANILLA (unassigned)").size(11).color(p.fg_2),
             crate::style::hspace(),
-            text(format!("{} file(s)", set.files.len())).size(11).color(p.fg_3),
+            text(format!("{} file(s)", set.files.len()))
+                .size(11)
+                .color(p.fg_3),
         ]
         .align_y(Alignment::Center)
         .spacing(8);
@@ -661,14 +698,11 @@ impl State {
 
         let form_row = row![profile_picker, slot_input, import_btn].spacing(8);
 
-        container(
-            column![header, summary_line, form_row]
-                .spacing(8),
-        )
-        .padding([10, 12])
-        .style(surface_style(p, SurfaceKind::Bg3))
-        .width(Length::Fill)
-        .into()
+        container(column![header, summary_line, form_row].spacing(8))
+            .padding([10, 12])
+            .style(surface_style(p, SurfaceKind::Bg3))
+            .width(Length::Fill)
+            .into()
     }
 
     fn slot_row<'a>(
@@ -732,19 +766,28 @@ impl State {
             .get(&(s.profile.clone(), s.name.clone()));
         let snap_btn: Element<'a, Message> = match snap_state {
             Some(TransientAction::SnapshotInFlight) => button(
-                text("Saving…").size(11).color(p.fg_2).width(Length::Fixed(100.0)),
+                text("Saving…")
+                    .size(11)
+                    .color(p.fg_2)
+                    .width(Length::Fixed(100.0)),
             )
             .padding([3, 10])
             .style(button_style(p, ButtonKind::Default))
             .into(),
             Some(TransientAction::SnapshotJustSucceeded) => button(
-                text("Snapshotted ✓").size(11).color(p.ok).width(Length::Fixed(100.0)),
+                text("Snapshotted ✓")
+                    .size(11)
+                    .color(p.ok)
+                    .width(Length::Fixed(100.0)),
             )
             .padding([3, 10])
             .style(button_style(p, ButtonKind::Default))
             .into(),
             Some(TransientAction::SnapshotJustFailed) => button(
-                text("Failed ✗").size(11).color(p.err).width(Length::Fixed(100.0)),
+                text("Failed ✗")
+                    .size(11)
+                    .color(p.err)
+                    .width(Length::Fixed(100.0)),
             )
             .padding([3, 10])
             .style(button_style(p, ButtonKind::Default))
@@ -759,8 +802,15 @@ impl State {
                 .into(),
         };
 
-        let is_selected = self.selected_slot.as_ref().is_some_and(|(p_, s_)| p_ == &s.profile && s_ == &s.name);
-        let select_label = if is_selected { "Hide snapshots" } else { "Snapshots" };
+        let is_selected = self
+            .selected_slot
+            .as_ref()
+            .is_some_and(|(p_, s_)| p_ == &s.profile && s_ == &s.name);
+        let select_label = if is_selected {
+            "Hide snapshots"
+        } else {
+            "Snapshots"
+        };
         let select_msg = if is_selected {
             Message::SelectSlot(None)
         } else {
@@ -823,9 +873,13 @@ impl State {
                     });
                 let confirm_with_tip = tooltip(
                     confirm_btn,
-                    container(text(format!("Move to '{}'", dst_profile)).size(11).color(p.fg_0))
-                        .padding(6)
-                        .style(surface_style(p, SurfaceKind::Bg2)),
+                    container(
+                        text(format!("Move to '{}'", dst_profile))
+                            .size(11)
+                            .color(p.fg_0),
+                    )
+                    .padding(6)
+                    .style(surface_style(p, SurfaceKind::Bg2)),
                     tooltip::Position::Top,
                 );
                 row![cancel_btn, confirm_with_tip]
@@ -843,15 +897,13 @@ impl State {
                     use iced::widget::pick_list;
                     let src_profile = s.profile.clone();
                     let src_slot = s.name.clone();
-                    pick_list(
-                        move_destinations,
-                        None::<String>,
-                        move |dst_profile| Message::RequestMoveSlotToProfile {
+                    pick_list(move_destinations, None::<String>, move |dst_profile| {
+                        Message::RequestMoveSlotToProfile {
                             src_profile: src_profile.clone(),
                             src_slot: src_slot.clone(),
                             dst_profile,
-                        },
-                    )
+                        }
+                    })
                     .placeholder("Move →")
                     .padding([3, 10])
                     .text_size(11)
@@ -877,8 +929,12 @@ impl State {
         let body: Element<'a, Message> = if is_selected {
             column![
                 header_row,
-                container(self.snapshot_section(&s.profile, &s.name, p))
-                    .padding(iced::Padding { top: 0.0, right: 12.0, bottom: 12.0, left: 12.0 }),
+                container(self.snapshot_section(&s.profile, &s.name, p)).padding(iced::Padding {
+                    top: 0.0,
+                    right: 12.0,
+                    bottom: 12.0,
+                    left: 12.0
+                }),
             ]
             .into()
         } else {
@@ -897,18 +953,15 @@ impl State {
         slot: &str,
         p: Palette,
     ) -> Element<'a, Message> {
-        let label_input = text_input(
-            "Snapshot label (auto-stamp if empty)",
-            &self.snapshot_label,
-        )
-        .on_input(Message::SnapshotLabelChanged)
-        .on_submit(Message::SnapshotSlot {
-            profile: profile.to_string(),
-            slot: slot.to_string(),
-        })
-        .padding([5, 10])
-        .size(12)
-        .width(Length::Fill);
+        let label_input = text_input("Snapshot label (auto-stamp if empty)", &self.snapshot_label)
+            .on_input(Message::SnapshotLabelChanged)
+            .on_submit(Message::SnapshotSlot {
+                profile: profile.to_string(),
+                slot: slot.to_string(),
+            })
+            .padding([5, 10])
+            .size(12)
+            .width(Length::Fill);
         let snap_btn = button(text("Snapshot now").size(11))
             .padding([5, 12])
             .style(button_style(p, ButtonKind::Primary))
@@ -918,7 +971,9 @@ impl State {
             });
         let snap_input_row = row![label_input, snap_btn].spacing(8);
 
-        let header = text(format!("SNAPSHOTS - {profile}/{slot}")).size(11).color(p.fg_2);
+        let header = text(format!("SNAPSHOTS - {profile}/{slot}"))
+            .size(11)
+            .color(p.fg_2);
 
         let rows: Vec<Element<'a, Message>> = if self.selected_snapshots.is_empty() {
             vec![
@@ -934,9 +989,13 @@ impl State {
                 .collect()
         };
 
-        column![header, snap_input_row, iced::widget::Column::with_children(rows).spacing(6)]
-            .spacing(8)
-            .into()
+        column![
+            header,
+            snap_input_row,
+            iced::widget::Column::with_children(rows).spacing(6)
+        ]
+        .spacing(8)
+        .into()
     }
 }
 
@@ -947,10 +1006,7 @@ fn snapshot_row<'a>(
     p: Palette,
 ) -> Element<'a, Message> {
     let title = text(s.name.clone()).size(12).color(p.fg_0);
-    let meta_bits: Vec<String> = vec![
-        fmt_size(Some(s.size_bytes)),
-        fmt_modified(s.modified),
-    ];
+    let meta_bits: Vec<String> = vec![fmt_size(Some(s.size_bytes)), fmt_modified(s.modified)];
     let meta = text(meta_bits.join(" • ")).size(11).color(p.fg_3);
 
     let restore_btn = button(text("Restore").size(11))
@@ -996,7 +1052,10 @@ fn fmt_size(bytes: Option<u64>) -> String {
 
 fn fmt_modified(t: Option<SystemTime>) -> String {
     let Some(t) = t else { return "—".into() };
-    let secs = t.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let secs = t
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())

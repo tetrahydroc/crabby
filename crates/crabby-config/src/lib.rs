@@ -266,10 +266,7 @@ where
 /// given [`ModConfig`]. The launcher and CLI both call this so they
 /// see the same set of mods (with the same dev-precedence) as the
 /// runtime shim will at boot.
-pub fn discover_mods_for_config(
-    game_dir: &Path,
-    cfg: &ModConfig,
-) -> Result<Vec<DiscoveredMod>> {
+pub fn discover_mods_for_config(game_dir: &Path, cfg: &ModConfig) -> Result<Vec<DiscoveredMod>> {
     let roots: Vec<(&Path, bool)> = cfg
         .extra_roots
         .iter()

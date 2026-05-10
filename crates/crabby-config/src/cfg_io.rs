@@ -120,7 +120,9 @@ pub fn parse(text: &str) -> Result<ModConfig, CfgError> {
         match current.as_deref() {
             Some("crabby") => crabby.set(&key, value, lineno)?,
             Some("crabby.roots") => {
-                let idx = key.strip_prefix("root.").and_then(|s| s.parse::<u32>().ok())
+                let idx = key
+                    .strip_prefix("root.")
+                    .and_then(|s| s.parse::<u32>().ok())
                     .ok_or_else(|| {
                         format!(
                             "line {}: [crabby.roots] keys must be `root.<n>`, got {key:?}",
@@ -489,7 +491,11 @@ mod tests {
         let text = render(&original);
         // Override emits the priority field; None entries omit it.
         assert!(text.contains(r#""priority": -100"#), "render: {text}");
-        assert!(!text.contains("default-prio = { \"enabled\": true, \"version\": \"1.0\", \"priority\""), "default-prio shouldn't carry priority: {text}");
+        assert!(
+            !text
+                .contains("default-prio = { \"enabled\": true, \"version\": \"1.0\", \"priority\""),
+            "default-prio shouldn't carry priority: {text}"
+        );
         let parsed = parse(&text).unwrap();
         assert_eq!(parsed, original);
     }
@@ -589,15 +595,27 @@ active_profile = "default"
     fn roots_roundtrip_preserves_order_and_dev_flag() {
         let mut cfg = ModConfig::default_fresh();
         cfg.extra_roots = vec![
-            RootEntry { path: "/home/me/dev-mod".into(), dev: true },
-            RootEntry { path: "D:/shared".into(), dev: false },
+            RootEntry {
+                path: "/home/me/dev-mod".into(),
+                dev: true,
+            },
+            RootEntry {
+                path: "D:/shared".into(),
+                dev: false,
+            },
         ];
         let text = render(&cfg);
         let parsed = parse(&text).unwrap();
         assert_eq!(parsed.extra_roots.len(), 2);
-        assert_eq!(parsed.extra_roots[0].path, std::path::PathBuf::from("/home/me/dev-mod"));
+        assert_eq!(
+            parsed.extra_roots[0].path,
+            std::path::PathBuf::from("/home/me/dev-mod")
+        );
         assert!(parsed.extra_roots[0].dev);
-        assert_eq!(parsed.extra_roots[1].path, std::path::PathBuf::from("D:/shared"));
+        assert_eq!(
+            parsed.extra_roots[1].path,
+            std::path::PathBuf::from("D:/shared")
+        );
         assert!(!parsed.extra_roots[1].dev);
     }
 

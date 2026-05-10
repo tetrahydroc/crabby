@@ -271,9 +271,7 @@ impl Client {
         let mut out: Vec<crate::catalog::RemoteListing> = Vec::new();
         let mut page = 1_u32;
         loop {
-            let url = format!(
-                "{API_BASE}/games/{game_id}/mods?limit={per_page}&page={page}"
-            );
+            let url = format!("{API_BASE}/games/{game_id}/mods?limit={per_page}&page={page}");
             let body = self.do_fetch(&url).await?;
             let parsed: ListingPage = serde_json::from_str(&body)
                 .map_err(|e| ClientError::Parse(format!("listing page {page}: {e}")))?;
@@ -382,23 +380,13 @@ impl Client {
             // better to surface the live error than feed bad data.
             tracing::warn!(url, ?ttl, "mw: live fetch failed, serving stale cache");
             // Re-acquire to remove the in-flight marker before returning.
-            self.inner
-                .inflight
-                .lock()
-                .await
-                .entries
-                .remove(&(kind, id));
+            self.inner.inflight.lock().await.entries.remove(&(kind, id));
             notify.notify_waiters();
             return Ok(env.body);
         }
         // Remove from in-flight so subsequent callers re-enter the
         // fetch path.
-        self.inner
-            .inflight
-            .lock()
-            .await
-            .entries
-            .remove(&(kind, id));
+        self.inner.inflight.lock().await.entries.remove(&(kind, id));
         notify.notify_waiters();
         result
     }
@@ -436,10 +424,7 @@ impl Client {
     ///
     /// Errors per-id are swallowed (just dropped from the result) so
     /// one offline id doesn't tank the rest of the batch.
-    pub async fn bulk_check_updates(
-        &self,
-        targets: &[(u64, String)],
-    ) -> Vec<(u64, UpdateStatus)> {
+    pub async fn bulk_check_updates(&self, targets: &[(u64, String)]) -> Vec<(u64, UpdateStatus)> {
         let mut out = Vec::with_capacity(targets.len());
         for (i, (id, local)) in targets.iter().enumerate() {
             // Time the call so throttling only happens when the
@@ -480,9 +465,7 @@ struct ModFilesPage {
 }
 
 /// Read back the cached listing blob (a JSON-array of `RemoteListing`).
-fn parse_cached_listing(
-    body: &str,
-) -> Result<Vec<crate::catalog::RemoteListing>, ClientError> {
+fn parse_cached_listing(body: &str) -> Result<Vec<crate::catalog::RemoteListing>, ClientError> {
     serde_json::from_str(body).map_err(|e| ClientError::Parse(e.to_string()))
 }
 
@@ -526,14 +509,20 @@ mod tests {
 
     #[test]
     fn semver_pure() {
-        assert_eq!(compare_versions("1.0.0", "1.0.1"), UpdateStatus::UpdateAvailable);
+        assert_eq!(
+            compare_versions("1.0.0", "1.0.1"),
+            UpdateStatus::UpdateAvailable
+        );
         assert_eq!(compare_versions("1.0.0", "1.0.0"), UpdateStatus::UpToDate);
         assert_eq!(compare_versions("1.1.0", "1.0.9"), UpdateStatus::LocalNewer);
     }
 
     #[test]
     fn semver_with_v_prefix() {
-        assert_eq!(compare_versions("v1.0.0", "v1.1.0"), UpdateStatus::UpdateAvailable);
+        assert_eq!(
+            compare_versions("v1.0.0", "v1.1.0"),
+            UpdateStatus::UpdateAvailable
+        );
     }
 
     #[test]

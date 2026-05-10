@@ -62,7 +62,12 @@ impl HookFlags {
     /// "wrap everything" emission.
     #[must_use]
     pub fn all() -> Self {
-        Self { pre: true, post: true, callback: true, replace: true }
+        Self {
+            pre: true,
+            post: true,
+            callback: true,
+            replace: true,
+        }
     }
 }
 

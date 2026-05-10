@@ -33,8 +33,7 @@ use crabby_parser::parse_script;
 use crabby_pck::{PckArchive, PckEntry};
 use crabby_rewriter::{
     ADDITIVE_TEMPLATE_SCRIPTS, TemplateKind, is_additive_script, is_data_intercept_script,
-    is_runtime_incompatible, pick_template, rewrite_consumer_calls,
-    rewrite_full_script_with_hooks,
+    is_runtime_incompatible, pick_template, rewrite_consumer_calls, rewrite_full_script_with_hooks,
 };
 use std::collections::HashSet;
 use tracing::{debug, info};
@@ -144,11 +143,8 @@ pub fn bake_pck(inputs: &BakePckInputs<'_>) -> Result<BakePckOutputs> {
             .map(|(k, f)| (k.as_str(), [f.pre, f.post, f.callback, f.replace])),
         inputs.enabled_mod_ids.iter().map(String::as_str),
     );
-    let bake_key = BakeKey::from_pck_with_mods(
-        inputs.crabby_version,
-        inputs.vanilla_pck,
-        &mods_digest,
-    )?;
+    let bake_key =
+        BakeKey::from_pck_with_mods(inputs.crabby_version, inputs.vanilla_pck, &mods_digest)?;
     let mut archive = PckArchive::open(inputs.vanilla_pck)?;
 
     // Filter to script entries first so pass-1 only iterates them.
@@ -207,8 +203,7 @@ pub fn bake_pck(inputs: &BakePckInputs<'_>) -> Result<BakePckOutputs> {
         // methods, since mods don't typically `take_over_path` swap
         // classes with statics, but the analyzer's overlap check
         // shouldn't treat a vanilla static as "missing" when comparing.
-        let methods: BTreeSet<String> =
-            parsed.functions.iter().map(|f| f.name.clone()).collect();
+        let methods: BTreeSet<String> = parsed.functions.iter().map(|f| f.name.clone()).collect();
         if !methods.is_empty() {
             vanilla_methods.insert(filename.clone(), methods);
         }
@@ -240,7 +235,10 @@ pub fn bake_pck(inputs: &BakePckInputs<'_>) -> Result<BakePckOutputs> {
         if let Some(map) = inputs.hooked_method_kinds {
             for func in &hookable {
                 let base = crabby_rewriter::hook_base(&prefix, &func.name);
-                let f = map.get(&base).copied().unwrap_or(crabby_rewriter::HookFlags::all());
+                let f = map
+                    .get(&base)
+                    .copied()
+                    .unwrap_or(crabby_rewriter::HookFlags::all());
                 if !f.pre {
                     stats.pre_sites_skipped += 1;
                 }

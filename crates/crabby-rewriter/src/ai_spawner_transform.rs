@@ -115,17 +115,32 @@ mod tests {
     fn wraps_each_agent_assignment() {
         let src = "extends Node3D\n\nfunc _ready():\n\tif zone == Zone.Area05:\n\t\tagent = bandit\n\telif zone == Zone.BorderZone:\n\t\tagent = guard\n\telif zone == Zone.Vostok:\n\t\tagent = military\n";
         let out = transform("AISpawner.gd", src);
-        assert!(out.contains("agent = _rtv_resolve_ai_type(zone, bandit)"), "{out}");
-        assert!(out.contains("agent = _rtv_resolve_ai_type(zone, guard)"), "{out}");
-        assert!(out.contains("agent = _rtv_resolve_ai_type(zone, military)"), "{out}");
+        assert!(
+            out.contains("agent = _rtv_resolve_ai_type(zone, bandit)"),
+            "{out}"
+        );
+        assert!(
+            out.contains("agent = _rtv_resolve_ai_type(zone, guard)"),
+            "{out}"
+        );
+        assert!(
+            out.contains("agent = _rtv_resolve_ai_type(zone, military)"),
+            "{out}"
+        );
     }
 
     #[test]
     fn appends_resolver_helper() {
         let src = "extends Node3D\n\nfunc _ready():\n\tagent = bandit\n";
         let out = transform("AISpawner.gd", src);
-        assert!(out.contains("func _rtv_resolve_ai_type(zone_value, vanilla_scene)"), "{out}");
-        assert!(out.contains("Engine.get_meta(\"_rtv_ai_overrides\", {})"), "{out}");
+        assert!(
+            out.contains("func _rtv_resolve_ai_type(zone_value, vanilla_scene)"),
+            "{out}"
+        );
+        assert!(
+            out.contains("Engine.get_meta(\"_rtv_ai_overrides\", {})"),
+            "{out}"
+        );
         assert!(out.contains("Zone.keys()[int(zone_value)]"), "{out}");
     }
 

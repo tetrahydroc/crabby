@@ -73,7 +73,12 @@ fn pill<'a>(theme: &'a CrabbyTheme, p: Palette) -> Element<'a, Message> {
         ]
         .spacing(8)
         .align_y(Alignment::Center)
-        .padding(iced::Padding { top: 0.0, right: 10.0, bottom: 0.0, left: 8.0 }),
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 10.0,
+            bottom: 0.0,
+            left: 8.0,
+        }),
     )
     .padding(0)
     .style(move |_t, _s| iced::widget::button::Style {
@@ -99,7 +104,12 @@ fn panel<'a>(
         text("Quick theme").size(12).color(p.fg_0),
         crate::style::hspace(),
         button(text("×").size(13).color(p.fg_2))
-            .padding(iced::Padding { top: 0.0, right: 6.0, bottom: 0.0, left: 6.0 })
+            .padding(iced::Padding {
+                top: 0.0,
+                right: 6.0,
+                bottom: 0.0,
+                left: 6.0
+            })
             .style(button_style(p, ButtonKind::Ghost))
             .on_press(Message::ToggleQuickTheme),
     ]
@@ -108,8 +118,18 @@ fn panel<'a>(
     .padding([10, 14]);
 
     let mode_row = row![
-        seg("Dark", theme.mode == Mode::Dark, p, ThemeChange::Mode(Mode::Dark)),
-        seg("Light", theme.mode == Mode::Light, p, ThemeChange::Mode(Mode::Light)),
+        seg(
+            "Dark",
+            theme.mode == Mode::Dark,
+            p,
+            ThemeChange::Mode(Mode::Dark)
+        ),
+        seg(
+            "Light",
+            theme.mode == Mode::Light,
+            p,
+            ThemeChange::Mode(Mode::Light)
+        ),
     ]
     .spacing(6);
 
@@ -127,15 +147,21 @@ fn panel<'a>(
             ..Default::default()
         });
 
-    let hue = slider(0.0..=360.0, theme.accent_hue, |v| Message::ThemeChanged(ThemeChange::AccentHue(v)))
-        .step(1.0)
-        .width(Length::Fill);
-    let chroma = slider(0.0..=0.30, theme.accent_c, |v| Message::ThemeChanged(ThemeChange::AccentC(v)))
-        .step(0.005)
-        .width(Length::Fill);
-    let lightness = slider(0.40..=0.85, theme.accent_l, |v| Message::ThemeChanged(ThemeChange::AccentL(v)))
-        .step(0.005)
-        .width(Length::Fill);
+    let hue = slider(0.0..=360.0, theme.accent_hue, |v| {
+        Message::ThemeChanged(ThemeChange::AccentHue(v))
+    })
+    .step(1.0)
+    .width(Length::Fill);
+    let chroma = slider(0.0..=0.30, theme.accent_c, |v| {
+        Message::ThemeChanged(ThemeChange::AccentC(v))
+    })
+    .step(0.005)
+    .width(Length::Fill);
+    let lightness = slider(0.40..=0.85, theme.accent_l, |v| {
+        Message::ThemeChanged(ThemeChange::AccentL(v))
+    })
+    .step(0.005)
+    .width(Length::Fill);
 
     let accent_block = column![
         row![
@@ -143,7 +169,7 @@ fn panel<'a>(
             column![
                 mini_slider("Hue", &format!("{:.0}°", theme.accent_hue), hue, p),
                 mini_slider("Chr", &format!("{:.3}", theme.accent_c), chroma, p),
-                mini_slider("L",   &format!("{:.2}", theme.accent_l), lightness, p),
+                mini_slider("L", &format!("{:.2}", theme.accent_l), lightness, p),
             ]
             .spacing(8)
             .width(Length::Fill),
@@ -152,13 +178,20 @@ fn panel<'a>(
         .align_y(Alignment::Center),
     ];
 
-    let bg_tint = slider(0.0..=360.0, theme.bg_tint_hue, |v| Message::ThemeChanged(ThemeChange::BgTintHue(v)))
-        .step(1.0)
-        .width(Length::Fill);
+    let bg_tint = slider(0.0..=360.0, theme.bg_tint_hue, |v| {
+        Message::ThemeChanged(ThemeChange::BgTintHue(v))
+    })
+    .step(1.0)
+    .width(Length::Fill);
 
     let saved = saved_strip(saved_colors, p);
     let save_btn = button(text("Save current").size(10))
-        .padding(iced::Padding { top: 3.0, right: 8.0, bottom: 3.0, left: 8.0 })
+        .padding(iced::Padding {
+            top: 3.0,
+            right: 8.0,
+            bottom: 3.0,
+            left: 8.0,
+        })
         .style(button_style(p, ButtonKind::Default))
         .on_press(Message::ThemeChanged(ThemeChange::SaveCurrent));
 
@@ -207,7 +240,11 @@ fn eyebrow<'a>(label: &'a str, p: Palette) -> Element<'a, Message> {
 }
 
 fn seg<'a>(label: &'a str, active: bool, p: Palette, change: ThemeChange) -> Element<'a, Message> {
-    let kind = if active { ButtonKind::Primary } else { ButtonKind::Ghost };
+    let kind = if active {
+        ButtonKind::Primary
+    } else {
+        ButtonKind::Ghost
+    };
     button(text(label).size(10))
         .padding([4, 10])
         .style(button_style(p, kind))
@@ -223,7 +260,10 @@ fn mini_slider<'a>(
 ) -> Element<'a, Message> {
     column![
         row![
-            text(label).size(10).color(p.fg_2).width(Length::Fixed(36.0)),
+            text(label)
+                .size(10)
+                .color(p.fg_2)
+                .width(Length::Fixed(36.0)),
             crate::style::hspace(),
             text(value_str.to_string()).size(10).color(p.fg_1),
         ]
@@ -236,15 +276,9 @@ fn mini_slider<'a>(
 
 fn saved_strip<'a>(saved: &'a [[f32; 3]], p: Palette) -> Element<'a, Message> {
     if saved.is_empty() {
-        return text("No saved colors yet.")
-            .size(10)
-            .color(p.fg_3)
-            .into();
+        return text("No saved colors yet.").size(10).color(p.fg_3).into();
     }
-    let cells: Vec<Element<'a, Message>> = saved
-        .iter()
-        .map(|lch| saved_cell(*lch, p))
-        .collect();
+    let cells: Vec<Element<'a, Message>> = saved.iter().map(|lch| saved_cell(*lch, p)).collect();
     iced::widget::Row::with_children(cells)
         .spacing(6)
         .align_y(Alignment::Center)
@@ -271,4 +305,3 @@ fn saved_cell<'a>(lch: [f32; 3], p: Palette) -> Element<'a, Message> {
         .on_press(Message::ThemeChanged(ThemeChange::ApplySaved(lch)))
         .into()
 }
-

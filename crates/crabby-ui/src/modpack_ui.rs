@@ -202,9 +202,7 @@ pub fn overlay<'a>(
     let p = *palette;
     match state {
         ModpackState::Idle => empty(),
-        ModpackState::ExportToast { text, copied } => {
-            modal(p, export_toast_view(text, *copied, p))
-        }
+        ModpackState::ExportToast { text, copied } => modal(p, export_toast_view(text, *copied, p)),
         ModpackState::ImportPaste { input, error } => {
             modal(p, import_paste_view(input, error.as_deref(), p))
         }
@@ -246,7 +244,10 @@ fn empty<'a>() -> Element<'a, crate::app::Message> {
 }
 
 /// Wrap `body` in a centered modal panel with a dim backdrop.
-fn modal<'a>(p: Palette, body: Element<'a, crate::app::Message>) -> Element<'a, crate::app::Message> {
+fn modal<'a>(
+    p: Palette,
+    body: Element<'a, crate::app::Message>,
+) -> Element<'a, crate::app::Message> {
     // Backdrop = full-fill semi-opaque container that swallows clicks
     // outside the panel. Clicking it dismisses.
     let panel = container(body)
@@ -281,7 +282,12 @@ fn modal_header<'a>(title: String, p: Palette) -> Element<'a, crate::app::Messag
         text(title).size(14).color(p.fg_0),
         crate::style::hspace(),
         button(text("×").size(14).color(p.fg_2))
-            .padding(iced::Padding { top: 0.0, right: 8.0, bottom: 0.0, left: 8.0 })
+            .padding(iced::Padding {
+                top: 0.0,
+                right: 8.0,
+                bottom: 0.0,
+                left: 8.0
+            })
             .style(button_style(p, ButtonKind::Ghost))
             .on_press(crate::app::Message::Modpack(Message::Dismiss)),
     ]
@@ -343,9 +349,16 @@ fn export_toast_view<'a>(
         .align_y(Alignment::Center),
     ]
     .spacing(12)
-    .padding(iced::Padding { top: 0.0, right: 16.0, bottom: 16.0, left: 16.0 });
+    .padding(iced::Padding {
+        top: 0.0,
+        right: 16.0,
+        bottom: 16.0,
+        left: 16.0,
+    });
 
-    column![header, Element::<crate::app::Message>::from(body)].spacing(0).into()
+    column![header, Element::<crate::app::Message>::from(body)]
+        .spacing(0)
+        .into()
 }
 
 fn import_paste_view<'a>(
@@ -387,9 +400,16 @@ fn import_paste_view<'a>(
         .align_y(Alignment::Center),
     ]
     .spacing(10)
-    .padding(iced::Padding { top: 0.0, right: 16.0, bottom: 16.0, left: 16.0 });
+    .padding(iced::Padding {
+        top: 0.0,
+        right: 16.0,
+        bottom: 16.0,
+        left: 16.0,
+    });
 
-    column![header, Element::<crate::app::Message>::from(body)].spacing(0).into()
+    column![header, Element::<crate::app::Message>::from(body)]
+        .spacing(0)
+        .into()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -410,14 +430,19 @@ fn import_preview_view<'a>(
         .color(p.fg_2);
 
     // Target picker.
-    let new_radio = button(text(if matches!(target, ImportTarget::NewProfile) {
-        "● New profile"
-    } else {
-        "○ New profile"
-    }).size(11))
-        .padding([3, 10])
-        .style(button_style(p, ButtonKind::Ghost))
-        .on_press(crate::app::Message::Modpack(Message::SelectNewProfileTarget));
+    let new_radio = button(
+        text(if matches!(target, ImportTarget::NewProfile) {
+            "● New profile"
+        } else {
+            "○ New profile"
+        })
+        .size(11),
+    )
+    .padding([3, 10])
+    .style(button_style(p, ButtonKind::Ghost))
+    .on_press(crate::app::Message::Modpack(
+        Message::SelectNewProfileTarget,
+    ));
     let new_input = text_input("New profile name", new_profile_name)
         .on_input(|s| crate::app::Message::Modpack(Message::NewProfileNameChanged(s)))
         .padding([5, 10])
@@ -445,9 +470,13 @@ fn import_preview_view<'a>(
 
     let target_section = column![
         text("TARGET").size(11).color(p.fg_2),
-        row![new_radio, new_input].spacing(8).align_y(Alignment::Center),
+        row![new_radio, new_input]
+            .spacing(8)
+            .align_y(Alignment::Center),
         text("Or merge into existing:").size(11).color(p.fg_3),
-        iced::widget::Row::with_children(existing_chips).spacing(6).wrap(),
+        iced::widget::Row::with_children(existing_chips)
+            .spacing(6)
+            .wrap(),
     ]
     .spacing(6);
 
@@ -466,13 +495,9 @@ fn import_preview_view<'a>(
             crate::app::Message::Modpack(Message::ToggleOverwriteMcm),
             p,
         );
-        column![
-            text("ON IMPORT").size(11).color(p.fg_2),
-            deact,
-            mcm,
-        ]
-        .spacing(6)
-        .into()
+        column![text("ON IMPORT").size(11).color(p.fg_2), deact, mcm,]
+            .spacing(6)
+            .into()
     } else {
         // For new profiles: only the MCM prompt is interesting (still
         // applies if the same mod ids exist in the MCM dir from
@@ -501,7 +526,10 @@ fn import_preview_view<'a>(
             };
             container(
                 row![
-                    text(pm.name.clone()).size(12).color(p.fg_0).width(Length::Fill),
+                    text(pm.name.clone())
+                        .size(12)
+                        .color(p.fg_0)
+                        .width(Length::Fill),
                     text(pm.version.clone()).size(11).color(p.fg_2),
                     mw_chip,
                 ]
@@ -541,9 +569,16 @@ fn import_preview_view<'a>(
 
     let body = column![summary, target_section, prompts, mods_box, actions]
         .spacing(12)
-        .padding(iced::Padding { top: 0.0, right: 16.0, bottom: 16.0, left: 16.0 });
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 16.0,
+            bottom: 16.0,
+            left: 16.0,
+        });
 
-    column![header, Element::<crate::app::Message>::from(body)].spacing(0).into()
+    column![header, Element::<crate::app::Message>::from(body)]
+        .spacing(0)
+        .into()
 }
 
 fn import_progress_view<'a>(
@@ -557,15 +592,15 @@ fn import_progress_view<'a>(
     let summary = text(format!("{done}/{total} processed"))
         .size(12)
         .color(p.fg_2);
-    let rows: Vec<Element<'a, crate::app::Message>> = statuses
-        .iter()
-        .map(|s| status_row(s, p))
-        .collect();
+    let rows: Vec<Element<'a, crate::app::Message>> =
+        statuses.iter().map(|s| status_row(s, p)).collect();
     let body = column![
         summary,
         container(
             scrollable(
-                iced::widget::Column::with_children(rows).spacing(2).width(Length::Fill),
+                iced::widget::Column::with_children(rows)
+                    .spacing(2)
+                    .width(Length::Fill),
             )
             .height(Length::Fixed(220.0)),
         )
@@ -573,8 +608,15 @@ fn import_progress_view<'a>(
         .width(Length::Fill),
     ]
     .spacing(12)
-    .padding(iced::Padding { top: 0.0, right: 16.0, bottom: 16.0, left: 16.0 });
-    column![header, Element::<crate::app::Message>::from(body)].spacing(0).into()
+    .padding(iced::Padding {
+        top: 0.0,
+        right: 16.0,
+        bottom: 16.0,
+        left: 16.0,
+    });
+    column![header, Element::<crate::app::Message>::from(body)]
+        .spacing(0)
+        .into()
 }
 
 fn import_done_view<'a>(
@@ -583,21 +625,30 @@ fn import_done_view<'a>(
     p: Palette,
 ) -> Element<'a, crate::app::Message> {
     let header = modal_header(format!("Imported into `{target_profile}`"), p);
-    let ok = statuses.iter().filter(|s| matches!(s.outcome, Some(ModOutcome::Ok))).count();
-    let failed = statuses.iter().filter(|s| matches!(s.outcome, Some(ModOutcome::Failed(_)))).count();
-    let skipped = statuses.iter().filter(|s| matches!(s.outcome, Some(ModOutcome::Skipped(_)))).count();
+    let ok = statuses
+        .iter()
+        .filter(|s| matches!(s.outcome, Some(ModOutcome::Ok)))
+        .count();
+    let failed = statuses
+        .iter()
+        .filter(|s| matches!(s.outcome, Some(ModOutcome::Failed(_))))
+        .count();
+    let skipped = statuses
+        .iter()
+        .filter(|s| matches!(s.outcome, Some(ModOutcome::Skipped(_))))
+        .count();
     let summary = text(format!("{ok} ok • {failed} failed • {skipped} skipped"))
         .size(12)
         .color(p.fg_2);
-    let rows: Vec<Element<'a, crate::app::Message>> = statuses
-        .iter()
-        .map(|s| status_row(s, p))
-        .collect();
+    let rows: Vec<Element<'a, crate::app::Message>> =
+        statuses.iter().map(|s| status_row(s, p)).collect();
     let body = column![
         summary,
         container(
             scrollable(
-                iced::widget::Column::with_children(rows).spacing(2).width(Length::Fill),
+                iced::widget::Column::with_children(rows)
+                    .spacing(2)
+                    .width(Length::Fill),
             )
             .height(Length::Fixed(220.0)),
         )
@@ -613,8 +664,15 @@ fn import_done_view<'a>(
         .spacing(8),
     ]
     .spacing(12)
-    .padding(iced::Padding { top: 0.0, right: 16.0, bottom: 16.0, left: 16.0 });
-    column![header, Element::<crate::app::Message>::from(body)].spacing(0).into()
+    .padding(iced::Padding {
+        top: 0.0,
+        right: 16.0,
+        bottom: 16.0,
+        left: 16.0,
+    });
+    column![header, Element::<crate::app::Message>::from(body)]
+        .spacing(0)
+        .into()
 }
 
 fn status_row<'a>(s: &'a ModImportStatus, p: Palette) -> Element<'a, crate::app::Message> {
@@ -624,17 +682,19 @@ fn status_row<'a>(s: &'a ModImportStatus, p: Palette) -> Element<'a, crate::app:
         Some(ModOutcome::Skipped(why)) => (format!("skipped: {why}"), p.warn),
         None => match &s.resolution {
             ModResolution::Activate => ("queued: activate".to_string(), p.fg_3),
-            ModResolution::KeepInstalledVersion { local_version } => (
-                format!("queued: keep local v{local_version}"),
-                p.warn,
-            ),
+            ModResolution::KeepInstalledVersion { local_version } => {
+                (format!("queued: keep local v{local_version}"), p.warn)
+            }
             ModResolution::InstallFromMw { .. } => ("queued: install".to_string(), p.fg_3),
             ModResolution::SkippedNoSource => ("skip: not on MW".to_string(), p.warn),
         },
     };
     container(
         row![
-            text(s.name.clone()).size(12).color(p.fg_0).width(Length::Fill),
+            text(s.name.clone())
+                .size(12)
+                .color(p.fg_0)
+                .width(Length::Fill),
             text(label).size(11).color(color),
         ]
         .spacing(10)

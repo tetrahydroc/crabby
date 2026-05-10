@@ -746,7 +746,11 @@ impl State {
     /// they don't ship to the bake.
     #[must_use]
     pub fn enabled_size_bytes(&self) -> u64 {
-        self.rows.iter().filter(|r| r.enabled).map(|r| r.size_bytes).sum()
+        self.rows
+            .iter()
+            .filter(|r| r.enabled)
+            .map(|r| r.size_bytes)
+            .sum()
     }
 
     /// Snapshot of installed mods for cross-module consumers (the
@@ -783,10 +787,7 @@ impl State {
     /// triple the App needs to fire an update download. Returns
     /// `None` when the mod isn't found, has no MW id, or is a folder
     /// mod (no clean update path for those).
-    pub fn update_target_for(
-        &self,
-        local_id: &str,
-    ) -> Option<(String, u64, std::path::PathBuf)> {
+    pub fn update_target_for(&self, local_id: &str) -> Option<(String, u64, std::path::PathBuf)> {
         let row = self.rows.iter().find(|r| r.id == local_id)?;
         if row.source == ModSource::Folder {
             return None;
@@ -899,11 +900,18 @@ impl State {
     /// (matches the field's existing kind) and write it. Bad input is
     /// silently dropped - the field's display reverts.
     fn commit_mcm_buffer(&mut self, section: &str, key: &str) {
-        let Some(buf) = self.mcm_buffers.remove(&(section.to_string(), key.to_string())) else {
+        let Some(buf) = self
+            .mcm_buffers
+            .remove(&(section.to_string(), key.to_string()))
+        else {
             return;
         };
-        let Some(cfg) = self.mcm_cfg.as_ref() else { return };
-        let Some(field) = cfg.find(section, key) else { return };
+        let Some(cfg) = self.mcm_cfg.as_ref() else {
+            return;
+        };
+        let Some(field) = cfg.find(section, key) else {
+            return;
+        };
         let new_value = match &field.value {
             McmValue::Bool(_) => return, // bools don't go through input buffers
             McmValue::Int(_) => match buf.trim().parse::<i64>() {
@@ -974,7 +982,11 @@ impl State {
         let total = self.rows.len();
         let enabled_count = self.rows.iter().filter(|r| r.enabled).count();
         let disabled_count = total - enabled_count;
-        let folder_count = self.rows.iter().filter(|r| r.source == ModSource::Folder).count();
+        let folder_count = self
+            .rows
+            .iter()
+            .filter(|r| r.source == ModSource::Folder)
+            .count();
         // Updates / Conflicts have no real source yet - surface 0 so
         // the chip exists but doesn't lie about counts.
         let updates_count = self
@@ -997,8 +1009,7 @@ impl State {
             .listings
             .iter()
             .filter(|l| {
-                l.id
-                    .parse::<u64>()
+                l.id.parse::<u64>()
                     .ok()
                     .map(|id| !local_mw_ids.contains(&id))
                     .unwrap_or(true)
@@ -1019,16 +1030,17 @@ impl State {
             Filter::Conflicts => conflicts_count,
             Filter::Browse => browse_count,
         };
-        let search_box = text_input(
-            &format!("Search {active_filter_count} mods"),
-            &self.search,
-        )
+        let search_box = text_input(&format!("Search {active_filter_count} mods"), &self.search)
             .on_input(Message::SearchChanged)
             .padding([5, 10])
             .size(12)
             .style(move |_t, _s| iced::widget::text_input::Style {
                 background: iced::Background::Color(p.bg_2),
-                border: iced::Border { color: p.line, width: 1.0, radius: 6.0.into() },
+                border: iced::Border {
+                    color: p.line,
+                    width: 1.0,
+                    radius: 6.0.into(),
+                },
                 icon: p.fg_3,
                 placeholder: p.fg_3,
                 value: p.fg_0,
@@ -1038,8 +1050,7 @@ impl State {
         // ---- Filter chips ----
         let mk_chip = |f: Filter, count: usize| -> Element<'_, Message> {
             let active = self.filter == f;
-            let label_text = text(format!("{} {}", f.label(), count))
-                .size(11);
+            let label_text = text(format!("{} {}", f.label(), count)).size(11);
             button(label_text)
                 .padding([3, 9])
                 .style(crate::style::filter_chip_style(p, active, f.tone()))
@@ -1078,9 +1089,7 @@ impl State {
             .spacing(8)
             .align_y(Alignment::Center);
 
-        let top = column![search_box, chips_row]
-            .spacing(10)
-            .padding([14, 14]);
+        let top = column![search_box, chips_row].spacing(10).padding([14, 14]);
 
         // ---- Build display items: locals first, then deduped remotes ----
         let q = self.search.trim().to_ascii_lowercase();
@@ -1099,9 +1108,7 @@ impl State {
                         self.mw_status.get(&r.id),
                         Some(crabby_modworkshop::UpdateStatus::UpdateAvailable)
                     ),
-                    Filter::Conflicts => {
-                        crabby_mod_analyzer::mod_has_conflicts(conflicts, &r.id)
-                    }
+                    Filter::Conflicts => crabby_mod_analyzer::mod_has_conflicts(conflicts, &r.id),
                 })
                 .filter(|r| {
                     if q.is_empty() {
@@ -1138,8 +1145,10 @@ impl State {
             Vec::new()
         };
 
-        let visible: Vec<DisplayItem<'_>> =
-            local_items.into_iter().chain(remote_items.into_iter()).collect();
+        let visible: Vec<DisplayItem<'_>> = local_items
+            .into_iter()
+            .chain(remote_items.into_iter())
+            .collect();
 
         // ---- Header strip: "INSTALLED · N shown" + sort button ----
         // ---- Body: rows or empty state ----
@@ -1156,10 +1165,14 @@ impl State {
                 Filter::Browse if listings_loading => "Loading catalog…",
                 Filter::Browse if listings_failed => {
                     if let ListingsState::Failed(e) = &self.listings_state {
-                        return container(text(format!("Catalog fetch failed: {e}")).size(12).color(p.err))
-                            .padding(24)
-                            .center_x(Length::Fill)
-                            .into();
+                        return container(
+                            text(format!("Catalog fetch failed: {e}"))
+                                .size(12)
+                                .color(p.err),
+                        )
+                        .padding(24)
+                        .center_x(Length::Fill)
+                        .into();
                     }
                     "Catalog fetch failed."
                 }
@@ -1207,7 +1220,11 @@ impl State {
             .padding(crate::style::ButtonSize::Sm.padding())
             .style(button_style(p, ButtonKind::Default))
             .on_press(Message::ExportPackClicked);
-        let more_label = if self.more_menu_open { "More ▴" } else { "More ▾" };
+        let more_label = if self.more_menu_open {
+            "More ▴"
+        } else {
+            "More ▾"
+        };
         let more_btn = button(text(more_label).size(11))
             .padding(crate::style::ButtonSize::Sm.padding())
             .style(button_style(p, ButtonKind::Default))
@@ -1242,12 +1259,10 @@ impl State {
             )
             .style(surface_style(p, SurfaceKind::Bg2))
             .width(Length::Fill);
-            container(
-                column![menu_strip, footer_row].spacing(0),
-            )
-            .style(surface_style(p, SurfaceKind::Bg1))
-            .width(Length::Fill)
-            .into()
+            container(column![menu_strip, footer_row].spacing(0))
+                .style(surface_style(p, SurfaceKind::Bg1))
+                .width(Length::Fill)
+                .into()
         } else {
             container(footer_row)
                 .style(surface_style(p, SurfaceKind::Bg1))
@@ -1258,9 +1273,7 @@ impl State {
         // Header strip dropped - `INSTALLED · N shown` was redundant
         // with the active filter chip + its count up top. Body sits
         // directly under the search/chips area now.
-        let inner = column![top, body, footer]
-            .spacing(0)
-            .height(Length::Fill);
+        let inner = column![top, body, footer].spacing(0).height(Length::Fill);
 
         container(inner)
             .style(surface_style(p, SurfaceKind::Bg2))
@@ -1299,12 +1312,8 @@ impl State {
             Some(crabby_modworkshop::UpdateStatus::UpdateAvailable)
         );
         let (status_label, status_tone) = match conflict_severity {
-            Some(crabby_mod_analyzer::Severity::Hard) => {
-                ("conflict", crate::style::PillTone::Err)
-            }
-            Some(crabby_mod_analyzer::Severity::Warn) => {
-                ("conflict", crate::style::PillTone::Warn)
-            }
+            Some(crabby_mod_analyzer::Severity::Hard) => ("conflict", crate::style::PillTone::Err),
+            Some(crabby_mod_analyzer::Severity::Warn) => ("conflict", crate::style::PillTone::Warn),
             Some(crabby_mod_analyzer::Severity::Info) | None if has_update => {
                 ("update", crate::style::PillTone::Accent)
             }
@@ -1331,9 +1340,8 @@ impl State {
             .and_then(|d| d.user.as_ref())
             .map(|u| u.name.clone())
             .filter(|n| !n.trim().is_empty());
-        let mut sub_pieces: Vec<Element<'_, Message>> = vec![
-            text(fmt_version(&r.version)).size(10).color(p.fg_2).into(),
-        ];
+        let mut sub_pieces: Vec<Element<'_, Message>> =
+            vec![text(fmt_version(&r.version)).size(10).color(p.fg_2).into()];
         if let Some(name) = author_name {
             sub_pieces.push(text("·").size(10).color(p.fg_3).into());
             sub_pieces.push(text(name).size(10).color(p.fg_2).into());
@@ -1354,7 +1362,11 @@ impl State {
 
         // Toggle - small ON/OFF pill button that flips colors.
         let id_for_toggle = r.id.clone();
-        let toggle_kind = if r.enabled { ButtonKind::Primary } else { ButtonKind::Default };
+        let toggle_kind = if r.enabled {
+            ButtonKind::Primary
+        } else {
+            ButtonKind::Default
+        };
         let toggle_label = if r.enabled { "ON" } else { "OFF" };
         let toggle = button(text(toggle_label).size(10))
             .padding([3, 9])
@@ -1371,7 +1383,11 @@ impl State {
             .padding([9, 14]);
 
         let row_bg = if selected { p.accent_soft } else { p.bg_2 };
-        let border_color = if selected { p.accent } else { iced::Color::TRANSPARENT };
+        let border_color = if selected {
+            p.accent
+        } else {
+            iced::Color::TRANSPARENT
+        };
         button(row_inner)
             .padding(0)
             .width(Length::Fill)
@@ -1415,9 +1431,8 @@ impl State {
             .align_y(Alignment::Center);
 
         // Sublabel: version · author · downloads.
-        let mut sub_pieces: Vec<Element<'_, Message>> = vec![
-            text(fmt_version(&l.version)).size(10).color(p.fg_2).into(),
-        ];
+        let mut sub_pieces: Vec<Element<'_, Message>> =
+            vec![text(fmt_version(&l.version)).size(10).color(p.fg_2).into()];
         if !l.author.trim().is_empty() {
             sub_pieces.push(text("·").size(10).color(p.fg_3).into());
             sub_pieces.push(text(l.author.clone()).size(10).color(p.fg_2).into());
@@ -1474,7 +1489,11 @@ impl State {
             .map(|s| s == l.id.as_str())
             .unwrap_or(false);
         let row_bg = if selected { p.accent_soft } else { p.bg_2 };
-        let border_color = if selected { p.accent } else { iced::Color::TRANSPARENT };
+        let border_color = if selected {
+            p.accent
+        } else {
+            iced::Color::TRANSPARENT
+        };
         button(row_inner)
             .padding(0)
             .width(Length::Fill)
@@ -1508,11 +1527,7 @@ impl State {
             Some(id) => {
                 if let Some(r) = self.rows.iter().find(|r| r.id == id) {
                     self.hero_and_body(r, conflicts, conflict_panel_overrides, p)
-                } else if let Some(r) = self
-                    .remote_row_cache
-                    .as_ref()
-                    .filter(|r| r.id == id)
-                {
+                } else if let Some(r) = self.remote_row_cache.as_ref().filter(|r| r.id == id) {
                     self.hero_and_body(r, conflicts, conflict_panel_overrides, p)
                 } else {
                     detail_empty_state(p)
@@ -1586,13 +1601,11 @@ impl State {
             .filter(|t| !t.file.is_empty())
         {
             Some(thumb) => match self.mw_images.get(&thumb.file) {
-                Some(MwImageState::Loaded(handle)) => {
-                    iced::widget::image(handle.clone())
-                        .width(Length::Fixed(168.0))
-                        .height(Length::Fixed(104.0))
-                        .content_fit(iced::ContentFit::Cover)
-                        .into()
-                }
+                Some(MwImageState::Loaded(handle)) => iced::widget::image(handle.clone())
+                    .width(Length::Fixed(168.0))
+                    .height(Length::Fixed(104.0))
+                    .content_fit(iced::ContentFit::Cover)
+                    .into(),
                 _ => crate::style::thumb(p, "loading", 168.0, 104.0),
             },
             None => crate::style::thumb(p, "screenshot", 168.0, 104.0),
@@ -1614,9 +1627,21 @@ impl State {
         if let Some(status) = self.mw_status.get(&r.id) {
             use crabby_modworkshop::UpdateStatus as US;
             let pill_el: Option<Element<'_, Message>> = match status {
-                US::UpdateAvailable => Some(crate::style::pill(p, "Update available", crate::style::PillTone::Accent)),
-                US::Differs => Some(crate::style::pill(p, "Version differs", crate::style::PillTone::Warn)),
-                US::LocalNewer => Some(crate::style::pill(p, "Local newer", crate::style::PillTone::Neutral)),
+                US::UpdateAvailable => Some(crate::style::pill(
+                    p,
+                    "Update available",
+                    crate::style::PillTone::Accent,
+                )),
+                US::Differs => Some(crate::style::pill(
+                    p,
+                    "Version differs",
+                    crate::style::PillTone::Warn,
+                )),
+                US::LocalNewer => Some(crate::style::pill(
+                    p,
+                    "Local newer",
+                    crate::style::PillTone::Neutral,
+                )),
                 US::UpToDate | US::Unknown => None,
             };
             if let Some(pe) = pill_el {
@@ -1632,7 +1657,8 @@ impl State {
         // Byline: id · version · author · file basename. Author comes
         // from the MW user lookup; omitted when MW data isn't loaded
         // yet so the row doesn't ghost-shift when the fetch lands.
-        let path_str = r.archive_path
+        let path_str = r
+            .archive_path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("?")
@@ -1676,7 +1702,11 @@ impl State {
             } else {
                 "Install"
             };
-            let kind = if installing { ButtonKind::Default } else { ButtonKind::Primary };
+            let kind = if installing {
+                ButtonKind::Default
+            } else {
+                ButtonKind::Primary
+            };
             let mut btn = button(text(label).size(12))
                 .padding(crate::style::ButtonSize::Md.padding())
                 .style(button_style(p, kind));
@@ -1687,7 +1717,11 @@ impl State {
         } else {
             let id_for_toggle = r.id.clone();
             let primary_label = if r.enabled { "✓ Enabled" } else { "Enable" };
-            let primary_kind = if r.enabled { ButtonKind::Primary } else { ButtonKind::Default };
+            let primary_kind = if r.enabled {
+                ButtonKind::Primary
+            } else {
+                ButtonKind::Default
+            };
             button(text(primary_label).size(12))
                 .padding(crate::style::ButtonSize::Md.padding())
                 .style(button_style(p, primary_kind))
@@ -1719,7 +1753,11 @@ impl State {
             } else {
                 "Update".to_string()
             };
-            let kind = if updating { ButtonKind::Default } else { ButtonKind::Primary };
+            let kind = if updating {
+                ButtonKind::Default
+            } else {
+                ButtonKind::Primary
+            };
             let mut btn = button(text(label).size(12))
                 .padding(crate::style::ButtonSize::Md.padding())
                 .style(button_style(p, kind));
@@ -1752,10 +1790,7 @@ impl State {
         let hero_actions: Element<'_, Message> = if let Some(e) = action_error {
             column![
                 hero_actions_row,
-                text(e)
-                    .size(11)
-                    .color(p.err)
-                    .width(Length::Shrink),
+                text(e).size(11).color(p.err).width(Length::Shrink),
             ]
             .spacing(6)
             .align_x(Alignment::End)
@@ -1789,19 +1824,13 @@ impl State {
                 .wrap();
             column![pill_row, title, byline, tag_row].spacing(8)
         };
-        let hero_row = row![
-            thumbnail,
-            hero_text,
-            crate::style::hspace(),
-            hero_actions,
-        ]
-        .spacing(18)
-        .align_y(Alignment::Start)
-        .padding([22, 28]);
+        let hero_row = row![thumbnail, hero_text, crate::style::hspace(), hero_actions,]
+            .spacing(18)
+            .align_y(Alignment::Start)
+            .padding([22, 28]);
 
-        let hero_band = container(hero_row)
-            .width(Length::Fill)
-            .style(move |_t| iced::widget::container::Style {
+        let hero_band = container(hero_row).width(Length::Fill).style(move |_t| {
+            iced::widget::container::Style {
                 background: Some(iced::Background::Color(p.bg_2)),
                 text_color: Some(p.fg_0),
                 border: iced::Border {
@@ -1810,7 +1839,8 @@ impl State {
                     radius: 0.0.into(),
                 },
                 ..Default::default()
-            });
+            }
+        });
 
         // ---- Body (2 cols) ----
         // Left: About + Settings (MCM editor).
@@ -1867,8 +1897,8 @@ impl State {
         // the panel doesn't dangle a "GALLERY" header over nothing.
         let gallery_section: Element<'_, Message> = self.gallery_strip(r, p);
 
-        let left_col = column![about_eyebrow, about_body, gallery_section, config_section]
-            .spacing(14);
+        let left_col =
+            column![about_eyebrow, about_body, gallery_section, config_section].spacing(14);
 
         // Right sidebar: Metadata table, Requires (placeholder), Actions.
         let metadata_eyebrow = text("METADATA").size(11).color(p.fg_2);
@@ -1889,7 +1919,10 @@ impl State {
         for (k, v) in meta_pairs {
             meta_col = meta_col.push(
                 row![
-                    text(k.to_string()).size(11).color(p.fg_2).width(Length::Fixed(72.0)),
+                    text(k.to_string())
+                        .size(11)
+                        .color(p.fg_2)
+                        .width(Length::Fixed(72.0)),
                     text(v).size(11).color(p.fg_0),
                 ]
                 .spacing(8),
@@ -1904,7 +1937,10 @@ impl State {
             );
             meta_col = meta_col.push(
                 row![
-                    text("Path").size(11).color(p.fg_2).width(Length::Fixed(72.0)),
+                    text("Path")
+                        .size(11)
+                        .color(p.fg_2)
+                        .width(Length::Fixed(72.0)),
                     path_value,
                 ]
                 .spacing(8)
@@ -1912,8 +1948,13 @@ impl State {
             );
             meta_col = meta_col.push(
                 row![
-                    text("Enabled").size(11).color(p.fg_2).width(Length::Fixed(72.0)),
-                    text(if r.enabled { "yes" } else { "no" }).size(11).color(p.fg_0),
+                    text("Enabled")
+                        .size(11)
+                        .color(p.fg_2)
+                        .width(Length::Fixed(72.0)),
+                    text(if r.enabled { "yes" } else { "no" })
+                        .size(11)
+                        .color(p.fg_0),
                 ]
                 .spacing(8),
             );
@@ -1958,7 +1999,10 @@ impl State {
                 });
             meta_col = meta_col.push(
                 row![
-                    text("Priority").size(11).color(p.fg_2).width(Length::Fixed(72.0)),
+                    text("Priority")
+                        .size(11)
+                        .color(p.fg_2)
+                        .width(Length::Fixed(72.0)),
                     p_input,
                     text(priority_hint).size(11).color(p.fg_3),
                 ]
@@ -1968,20 +2012,17 @@ impl State {
         }
 
         let requires_eyebrow = text("REQUIRES").size(11).color(p.fg_2);
-        let requires_body: Element<'_, Message> = match self
-            .mw_data
-            .get(&r.id)
-            .and_then(|res| res.as_ref().ok())
-        {
-            Some(data) if !data.mod_.dependencies.is_empty() => {
-                let mut col = column![].spacing(4);
-                for dep in &data.mod_.dependencies {
-                    col = col.push(dep_row(dep, &self.mw_dep_names, p));
+        let requires_body: Element<'_, Message> =
+            match self.mw_data.get(&r.id).and_then(|res| res.as_ref().ok()) {
+                Some(data) if !data.mod_.dependencies.is_empty() => {
+                    let mut col = column![].spacing(4);
+                    for dep in &data.mod_.dependencies {
+                        col = col.push(dep_row(dep, &self.mw_dep_names, p));
+                    }
+                    col.into()
                 }
-                col.into()
-            }
-            _ => text("None declared.").size(11).color(p.fg_3).into(),
-        };
+                _ => text("None declared.").size(11).color(p.fg_3).into(),
+            };
 
         // For folder mods the archive_path *is* the folder; for vmz/zip
         // it's the archive file. Either way we want to surface the
@@ -1990,7 +2031,10 @@ impl State {
         let folder_target = if r.archive_path.is_dir() {
             r.archive_path.clone()
         } else {
-            r.archive_path.parent().map(Path::to_path_buf).unwrap_or_else(|| r.archive_path.clone())
+            r.archive_path
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| r.archive_path.clone())
         };
         // Action column. Local-only buttons (Open mod folder, Refresh
         // this mod) are skipped on remote selections - they target a
@@ -2116,21 +2160,17 @@ impl State {
                 crabby_modworkshop::image_url(&img.file)
             };
             let thumb_el: Element<'_, Message> = match self.mw_images.get(&img.file) {
-                Some(MwImageState::Loaded(handle)) => {
-                    iced::widget::button(
-                        iced::widget::image(handle.clone())
-                            .width(Length::Fixed(120.0))
-                            .height(Length::Fixed(75.0))
-                            .content_fit(iced::ContentFit::Cover),
-                    )
-                    .padding(0)
-                    .style(crate::style::link_button_style(p))
-                    .on_press(Message::OpenUrl(url))
-                    .into()
-                }
-                Some(MwImageState::Failed(_)) => {
-                    crate::style::thumb(p, "(failed)", 120.0, 75.0)
-                }
+                Some(MwImageState::Loaded(handle)) => iced::widget::button(
+                    iced::widget::image(handle.clone())
+                        .width(Length::Fixed(120.0))
+                        .height(Length::Fixed(75.0))
+                        .content_fit(iced::ContentFit::Cover),
+                )
+                .padding(0)
+                .style(crate::style::link_button_style(p))
+                .on_press(Message::OpenUrl(url))
+                .into(),
+                Some(MwImageState::Failed(_)) => crate::style::thumb(p, "(failed)", 120.0, 75.0),
                 None => crate::style::thumb(p, "loading", 120.0, 75.0),
             };
             strip = strip.push(thumb_el);
@@ -2138,10 +2178,11 @@ impl State {
 
         iced::widget::column![
             text("GALLERY").size(11).color(p.fg_2),
-            iced::widget::scrollable(strip)
-                .direction(iced::widget::scrollable::Direction::Horizontal(
+            iced::widget::scrollable(strip).direction(
+                iced::widget::scrollable::Direction::Horizontal(
                     iced::widget::scrollable::Scrollbar::default(),
-                )),
+                )
+            ),
         ]
         .spacing(10)
         .into()
@@ -2158,20 +2199,18 @@ impl State {
             for f in fields {
                 group = group.push(self.mcm_field_row(f, p));
             }
-            col = col.push(
-                container(group)
-                    .padding([10, 14])
-                    .style(move |_t| iced::widget::container::Style {
-                        background: Some(iced::Background::Color(p.bg_3)),
-                        text_color: Some(p.fg_0),
-                        border: iced::Border {
-                            color: p.line_soft,
-                            width: 1.0,
-                            radius: 0.0.into(),
-                        },
-                        ..Default::default()
-                    }),
-            );
+            col = col.push(container(group).padding([10, 14]).style(move |_t| {
+                iced::widget::container::Style {
+                    background: Some(iced::Background::Color(p.bg_3)),
+                    text_color: Some(p.fg_0),
+                    border: iced::Border {
+                        color: p.line_soft,
+                        width: 1.0,
+                        radius: 0.0.into(),
+                    },
+                    ..Default::default()
+                }
+            }));
         }
         col.push(
             text(format!("MCM file: {}", cfg.path.display()))
@@ -2215,7 +2254,9 @@ impl State {
     ) -> Element<'a, Message> {
         let section = f.section.clone();
         let key = f.key.clone();
-        let is_capturing = self.mcm_capture.as_ref()
+        let is_capturing = self
+            .mcm_capture
+            .as_ref()
             .is_some_and(|(s, k)| s == &section && k == &key);
 
         let code = match &f.value {
@@ -2229,7 +2270,11 @@ impl State {
             crabby_config::keycode::keycode_label(code)
         };
 
-        let kind = if is_capturing { ButtonKind::Primary } else { ButtonKind::Default };
+        let kind = if is_capturing {
+            ButtonKind::Primary
+        } else {
+            ButtonKind::Default
+        };
         let mut btn = button(text(label).size(12))
             .padding([4, 12])
             .style(button_style(p, kind));
@@ -2304,9 +2349,7 @@ impl State {
                 let s_commit = section.clone();
                 let k_commit = key.clone();
                 text_input("", &displayed)
-                    .on_input(move |t| {
-                        Message::McmInputBuffer(s_buf.clone(), k_buf.clone(), t)
-                    })
+                    .on_input(move |t| Message::McmInputBuffer(s_buf.clone(), k_buf.clone(), t))
                     .on_submit(Message::McmInputCommit(s_commit, k_commit))
                     .padding([4, 8])
                     .size(12)
@@ -2399,7 +2442,11 @@ pub(crate) fn load_rows_from_discovered(
             }
         })
         .collect();
-    rows.sort_by(|a, b| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()));
+    rows.sort_by(|a, b| {
+        a.name
+            .to_ascii_lowercase()
+            .cmp(&b.name.to_ascii_lowercase())
+    });
     rows
 }
 
@@ -2427,7 +2474,6 @@ fn is_valid_priority_input(s: &str) -> bool {
     chars.all(|c| c.is_ascii_digit())
 }
 
-
 /// Persist a per-profile priority override for `mod_id`.
 ///
 /// `Some(n)` writes the override; `None` clears it (so the manifest's
@@ -2454,9 +2500,7 @@ fn set_mod_priority_override(
                 .into_iter()
                 .find(|d| d.manifest.id == mod_id)
                 .ok_or_else(|| crabby_error::CrabbyError::Bake {
-                    context: format!(
-                        "set_priority_override: no discovered mod with id {mod_id:?}"
-                    ),
+                    context: format!("set_priority_override: no discovered mod with id {mod_id:?}"),
                     source: "mod not found".into(),
                 })?;
             profile.mods.insert(
@@ -2475,7 +2519,6 @@ fn set_mod_priority_override(
     let _ = crabby_config::mod_index::rebuild_and_save(game_dir);
     Ok(())
 }
-
 
 fn toggle_mod(game_dir: &Path, mod_id: &str) -> Result<(), crabby_error::CrabbyError> {
     let mut cfg = ModConfig::load_or_default(game_dir)?;
@@ -2549,12 +2592,15 @@ fn render_conflicts_panel<'a>(
 
     let has_hard = mine.iter().any(|c| {
         matches!(c.kind, ConflictKind::DuplicateVanillaSwap { .. })
-            || matches!(c.kind, ConflictKind::SelfPattern { severity: Severity::Hard, .. })
+            || matches!(
+                c.kind,
+                ConflictKind::SelfPattern {
+                    severity: Severity::Hard,
+                    ..
+                }
+            )
     });
-    let collapsed = panel_overrides
-        .get(mod_id)
-        .copied()
-        .unwrap_or(!has_hard);
+    let collapsed = panel_overrides.get(mod_id).copied().unwrap_or(!has_hard);
 
     let count_color = if has_hard { p.err } else { p.warn };
     let chevron = if collapsed { "▸" } else { "▾" };
@@ -2562,7 +2608,9 @@ fn render_conflicts_panel<'a>(
         iced::widget::row![
             iced::widget::text(chevron).size(11).color(p.fg_2),
             iced::widget::text("CONFLICTS").size(11).color(p.fg_2),
-            iced::widget::text(format!("{}", mine.len())).size(11).color(count_color),
+            iced::widget::text(format!("{}", mine.len()))
+                .size(11)
+                .color(count_color),
         ]
         .spacing(8)
         .align_y(Alignment::Center),
@@ -2589,7 +2637,11 @@ fn render_conflicts_panel<'a>(
             ConflictKind::ReplaceHookCollision { .. } => ("⚠", Severity::Warn),
             ConflictKind::DuplicateVanillaSwap { .. } => ("✖", Severity::Hard),
             ConflictKind::SelfPattern { severity, .. } => (
-                if *severity == Severity::Hard { "✖" } else { "⚠" },
+                if *severity == Severity::Hard {
+                    "✖"
+                } else {
+                    "⚠"
+                },
                 *severity,
             ),
         };
@@ -2715,7 +2767,11 @@ fn tag_chip<'a>(label: &str, hex: &str, p: Palette) -> Element<'a, Message> {
         .style(move |_t| iced::widget::container::Style {
             background: Some(iced::Background::Color(bg)),
             text_color: Some(tone),
-            border: iced::Border { color: border, width: 1.0, radius: 999.0.into() },
+            border: iced::Border {
+                color: border,
+                width: 1.0,
+                radius: 999.0.into(),
+            },
             ..Default::default()
         })
         .into()
@@ -2731,7 +2787,10 @@ fn dep_row<'a>(
 ) -> Element<'a, Message> {
     let label = if !dep.name.trim().is_empty() {
         dep.name.clone()
-    } else if let Some(n) = resolved_names.get(&dep.mod_id).filter(|n| !n.trim().is_empty()) {
+    } else if let Some(n) = resolved_names
+        .get(&dep.mod_id)
+        .filter(|n| !n.trim().is_empty())
+    {
         n.clone()
     } else if dep.mod_id != 0 {
         format!("mod #{}", dep.mod_id)
@@ -2830,10 +2889,7 @@ fn mw_section_view<'a>(mw_id: u64, data: &'a MwData, p: Palette) -> Element<'a, 
             .unwrap_or_default()
     };
 
-    let mut col = column![
-        text("MODWORKSHOP").size(11).color(p.fg_2),
-    ]
-    .spacing(6);
+    let mut col = column![text("MODWORKSHOP").size(11).color(p.fg_2),].spacing(6);
 
     let kv = |k: &'static str, v: String| -> Element<'_, Message> {
         row![
@@ -2892,15 +2948,10 @@ fn preprocess_mw_markdown(input: &str) -> String {
     while i < bytes.len() {
         if bytes[i] == b'{' && i + 8 < bytes.len() && bytes[i + 1] == b'#' {
             let close = i + 8;
-            if bytes[close] == b'}'
-                && bytes[i + 2..close]
-                    .iter()
-                    .all(|b| b.is_ascii_hexdigit())
-            {
+            if bytes[close] == b'}' && bytes[i + 2..close].iter().all(|b| b.is_ascii_hexdigit()) {
                 if close + 1 < bytes.len() && bytes[close + 1] == b'(' {
                     if let Some(paren_end) = find_matching_paren(bytes, close + 1) {
-                        let inner = std::str::from_utf8(&bytes[close + 2..paren_end])
-                            .unwrap_or("");
+                        let inner = std::str::from_utf8(&bytes[close + 2..paren_end]).unwrap_or("");
                         out.push_str(inner);
                         i = paren_end + 1;
                         continue;
@@ -3043,7 +3094,11 @@ fn decode_image_to_handle(bytes: &[u8]) -> Result<iced::widget::image::Handle, S
     let img = image::load_from_memory(bytes).map_err(|e| format!("decode: {e}"))?;
     let rgba = img.to_rgba8();
     let (w, h) = rgba.dimensions();
-    Ok(iced::widget::image::Handle::from_rgba(w, h, rgba.into_raw()))
+    Ok(iced::widget::image::Handle::from_rgba(
+        w,
+        h,
+        rgba.into_raw(),
+    ))
 }
 
 /// On-disk size for a mod entry. Files (vmz/zip) report their own
@@ -3191,7 +3246,10 @@ mod tests {
         assert_eq!(fmt_size(512), "512 B");
         assert_eq!(fmt_size(1500), "1.5 KB");
         assert_eq!(fmt_size(3 * 1024 * 1024), "3.0 MB");
-        assert_eq!(fmt_size(2 * 1024 * 1024 * 1024 + 100 * 1024 * 1024), "2.10 GB");
+        assert_eq!(
+            fmt_size(2 * 1024 * 1024 * 1024 + 100 * 1024 * 1024),
+            "2.10 GB"
+        );
     }
 
     #[test]

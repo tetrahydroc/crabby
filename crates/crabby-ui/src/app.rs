@@ -18,13 +18,13 @@ use iced::widget::{button, column, container, pick_list, row, text};
 use iced::{Element, Length, Task, Theme};
 
 use crate::launcher_config::LauncherConfig;
+use crate::modpack_ui::{ImportTarget, ModImportStatus, ModOutcome, ModResolution, ModpackState};
 use crate::style;
 use crate::style::{
-    band_style, button_style, surface_style, text_color, text_style, ButtonKind, SurfaceKind,
-    TextTone,
+    ButtonKind, SurfaceKind, TextTone, band_style, button_style, surface_style, text_color,
+    text_style,
 };
-use crate::modpack_ui::{ModImportStatus, ModOutcome, ModResolution, ModpackState, ImportTarget};
-use crate::tabs::{diagnostics, logs, mods, profiles, saves, settings, Tab};
+use crate::tabs::{Tab, diagnostics, logs, mods, profiles, saves, settings};
 use crate::theme::CrabbyTheme;
 
 /// Crabby version embedded at compile time. Shown on the status bar.
@@ -543,9 +543,7 @@ impl App {
                 // mw_id + archive path forward so the post-update
                 // block can fire the download Task.
                 let updating_target: Option<(String, u64, std::path::PathBuf)> = match &msg {
-                    mods::Message::UpdateMod(local_id) => {
-                        self.mods.update_target_for(local_id)
-                    }
+                    mods::Message::UpdateMod(local_id) => self.mods.update_target_for(local_id),
                     _ => None,
                 };
                 self.mods.update(msg, self.game_dir.as_deref());
@@ -621,9 +619,7 @@ impl App {
                     return Task::batch(vec![
                         Task::done(Message::Mods(mods::Message::InstallStarted(listing_id))),
                         Task::perform(
-                            async move {
-                                install_remote_mod(&client, mw_id, &game_dir).await
-                            },
+                            async move { install_remote_mod(&client, mw_id, &game_dir).await },
                             move |result| {
                                 Message::Mods(mods::Message::InstallFinished(
                                     listing_id_clone.clone(),
@@ -640,9 +636,7 @@ impl App {
                     return Task::batch(vec![
                         Task::done(Message::Mods(mods::Message::UpdateStarted(local_id))),
                         Task::perform(
-                            async move {
-                                update_installed_mod(&client, mw_id, &existing_path).await
-                            },
+                            async move { update_installed_mod(&client, mw_id, &existing_path).await },
                             move |result| {
                                 Message::Mods(mods::Message::UpdateFinished(
                                     local_id_clone.clone(),
@@ -773,11 +767,12 @@ impl App {
                 // Capture before-state so a profile switch can be
                 // reacted to by re-pointing the active save target to
                 // the new profile's default slot.
-                let switching_to: Option<String> = if let profiles::Message::SwitchProfile(name) = &msg {
-                    Some(name.clone())
-                } else {
-                    None
-                };
+                let switching_to: Option<String> =
+                    if let profiles::Message::SwitchProfile(name) = &msg {
+                        Some(name.clone())
+                    } else {
+                        None
+                    };
                 self.profiles.update(msg, self.game_dir.as_deref());
                 // Switching profiles changes which mods show as enabled
                 // - force the mod list to repopulate.
@@ -796,7 +791,9 @@ impl App {
                         }
                         _ => crabby_config::saves::DEFAULT_NAME.to_string(),
                     };
-                    if let Err(e) = crabby_config::saves::set_active_target(&new_profile, &resolved_slot) {
+                    if let Err(e) =
+                        crabby_config::saves::set_active_target(&new_profile, &resolved_slot)
+                    {
                         tracing::warn!(profile = %new_profile, error = %e, "saves: set_active_target on profile switch failed");
                     }
                     self.saves.invalidate();
@@ -890,7 +887,11 @@ impl App {
                     return Task::none();
                 }
                 self.saves
-                    .update(msg, &active, self.launcher_config.confirm_destructive_actions)
+                    .update(
+                        msg,
+                        &active,
+                        self.launcher_config.confirm_destructive_actions,
+                    )
                     .map(Message::Saves)
             }
             Message::Modpack(msg) => {
@@ -994,11 +995,8 @@ impl App {
         // Modpack overlay - modal centered, above main but below the
         // quick-theme panel so theme tweaks remain available during a
         // long import. `Idle` renders an empty space (click-through).
-        let modpack = crate::modpack_ui::overlay(
-            &self.modpack,
-            self.profiles.all_profiles(),
-            &palette,
-        );
+        let modpack =
+            crate::modpack_ui::overlay(&self.modpack, self.profiles.all_profiles(), &palette);
 
         // Profile modal: Create / Edit overlays. Same stack position
         // as modpack: above main, below the floating quick-theme.
@@ -1013,7 +1011,7 @@ impl App {
     /// Build the resize-handle overlay: a Length::Fill container with
     /// eight mouse_area edges/corners arranged like a 3×3 grid.
     fn resize_overlay(&self) -> Element<'_, Message> {
-        use iced::widget::{mouse_area, row as row_widget, Space};
+        use iced::widget::{Space, mouse_area, row as row_widget};
         use iced::window::Direction as Dir;
 
         // Edge thickness in pixels. Matches what most native window
@@ -1037,10 +1035,8 @@ impl App {
                 .interaction(cursor)
                 .into()
         };
-        let center_filler: Element<'_, Message> = Space::new()
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into();
+        let center_filler: Element<'_, Message> =
+            Space::new().width(Length::Fill).height(Length::Fill).into();
 
         // Top row: NW corner, N edge, NE corner.
         let top = row_widget![
@@ -1134,9 +1130,7 @@ impl App {
                 Message::Batch(
                     pairs
                         .into_iter()
-                        .map(|(id, result)| {
-                            Message::Mods(mods::Message::MwFetched(id, result))
-                        })
+                        .map(|(id, result)| Message::Mods(mods::Message::MwFetched(id, result)))
                         .collect(),
                 )
             },
@@ -1145,10 +1139,7 @@ impl App {
 
     /// Modpack export/import dispatcher. Returns the Task to run
     /// (often `Task::none()`).
-    fn handle_modpack_message(
-        &mut self,
-        msg: crate::modpack_ui::Message,
-    ) -> Task<Message> {
+    fn handle_modpack_message(&mut self, msg: crate::modpack_ui::Message) -> Task<Message> {
         use crate::modpack_ui::Message as M;
         match msg {
             M::ExportClicked => {
@@ -1158,32 +1149,44 @@ impl App {
                             // Best-effort clipboard via iced's primitive.
                             // Falls back to "saved string available, click
                             // Save to file" if clipboard isn't reachable.
-                            self.modpack = ModpackState::ExportToast { text: code, copied: false };
+                            self.modpack = ModpackState::ExportToast {
+                                text: code,
+                                copied: false,
+                            };
                         }
                         Err(e) => {
                             tracing::error!(target = "crabby_ui::modpack", err = %e, "encode pack");
-                            self.modpack = ModpackState::ExportToast { text: format!("export failed: {e}"), copied: false };
+                            self.modpack = ModpackState::ExportToast {
+                                text: format!("export failed: {e}"),
+                                copied: false,
+                            };
                         }
                     },
                     Err(e) => {
                         tracing::error!(target = "crabby_ui::modpack", err = %e, "build manifest");
-                        self.modpack = ModpackState::ExportToast { text: format!("export failed: {e}"), copied: false };
+                        self.modpack = ModpackState::ExportToast {
+                            text: format!("export failed: {e}"),
+                            copied: false,
+                        };
                     }
                 }
                 Task::none()
             }
-            M::ExportSaveToFile => {
-                Task::perform(pick_modpack_save_path(), |opt| {
-                    Message::Modpack(M::ExportFilePicked(opt))
-                })
-            }
+            M::ExportSaveToFile => Task::perform(pick_modpack_save_path(), |opt| {
+                Message::Modpack(M::ExportFilePicked(opt))
+            }),
             M::ExportFilePicked(Some(path)) => {
                 if let Err(e) = self.save_modpack_to_file(&path) {
                     tracing::error!(target = "crabby_ui::modpack", err = %e, "save file");
-                    self.modpack = ModpackState::ExportToast { text: format!("save failed: {e}"), copied: false };
+                    self.modpack = ModpackState::ExportToast {
+                        text: format!("save failed: {e}"),
+                        copied: false,
+                    };
                 } else {
-                    self.modpack =
-                        ModpackState::ExportToast { text: format!("Saved to {}", path.display()), copied: false };
+                    self.modpack = ModpackState::ExportToast {
+                        text: format!("Saved to {}", path.display()),
+                        copied: false,
+                    };
                 }
                 Task::none()
             }
@@ -1298,28 +1301,26 @@ impl App {
             }
             M::ConfirmImport => {
                 // Pull the preview state out, then invoke the runner.
-                let (manifest, target_profile, deactivate, overwrite) = match std::mem::replace(
-                    &mut self.modpack,
-                    ModpackState::Idle,
-                ) {
-                    ModpackState::ImportPreview {
-                        manifest,
-                        new_profile_name,
-                        target,
-                        deactivate_existing,
-                        overwrite_mcm,
-                    } => {
-                        let target_profile = match target {
-                            ImportTarget::NewProfile => new_profile_name,
-                            ImportTarget::ExistingProfile(s) => s,
-                        };
-                        (manifest, target_profile, deactivate_existing, overwrite_mcm)
-                    }
-                    other => {
-                        self.modpack = other;
-                        return Task::none();
-                    }
-                };
+                let (manifest, target_profile, deactivate, overwrite) =
+                    match std::mem::replace(&mut self.modpack, ModpackState::Idle) {
+                        ModpackState::ImportPreview {
+                            manifest,
+                            new_profile_name,
+                            target,
+                            deactivate_existing,
+                            overwrite_mcm,
+                        } => {
+                            let target_profile = match target {
+                                ImportTarget::NewProfile => new_profile_name,
+                                ImportTarget::ExistingProfile(s) => s,
+                            };
+                            (manifest, target_profile, deactivate_existing, overwrite_mcm)
+                        }
+                        other => {
+                            self.modpack = other;
+                            return Task::none();
+                        }
+                    };
                 self.run_import(manifest, target_profile, deactivate, overwrite)
             }
             M::ImportProgress { index, outcome } => {
@@ -1331,21 +1332,22 @@ impl App {
                 Task::none()
             }
             M::ImportComplete => {
-                let (statuses, target_profile) = match std::mem::replace(
-                    &mut self.modpack,
-                    ModpackState::Idle,
-                ) {
-                    ModpackState::ImportRunning {
-                        statuses,
-                        target_profile,
-                        ..
-                    } => (statuses, target_profile),
-                    other => {
-                        self.modpack = other;
-                        return Task::none();
-                    }
+                let (statuses, target_profile) =
+                    match std::mem::replace(&mut self.modpack, ModpackState::Idle) {
+                        ModpackState::ImportRunning {
+                            statuses,
+                            target_profile,
+                            ..
+                        } => (statuses, target_profile),
+                        other => {
+                            self.modpack = other;
+                            return Task::none();
+                        }
+                    };
+                self.modpack = ModpackState::ImportDone {
+                    statuses,
+                    target_profile,
                 };
-                self.modpack = ModpackState::ImportDone { statuses, target_profile };
                 // Refresh the rest of the UI to reflect the new mods/profile.
                 self.mods.refresh_rows(self.game_dir.as_deref());
                 self.profiles.invalidate();
@@ -1377,7 +1379,12 @@ impl App {
         for snap in self.mods.installed_snapshot() {
             // Only include enabled mods - that's the "active set" the
             // pack reproduces.
-            if !profile.mods.get(&snap.id).map(|e| e.enabled).unwrap_or(false) {
+            if !profile
+                .mods
+                .get(&snap.id)
+                .map(|e| e.enabled)
+                .unwrap_or(false)
+            {
                 continue;
             }
             let mcm_config = crabby_config::mcm::find_config_for_mod(&snap.id, &snap.name)
@@ -1645,7 +1652,6 @@ impl App {
         Task::perform(rebuild_mod_cache(dir), Message::ModCacheRebuildFinished)
     }
 
-
     fn refresh_bake_status(&mut self) {
         let Some(dir) = self.game_dir.as_deref() else {
             self.bake_status = crabby_install::BakeStatus::Unknown {
@@ -1687,7 +1693,11 @@ impl App {
                 self.theme.accent_hue = h.rem_euclid(360.0);
             }
             ThemeChange::SaveCurrent => {
-                let entry = [self.theme.accent_l, self.theme.accent_c, self.theme.accent_hue];
+                let entry = [
+                    self.theme.accent_l,
+                    self.theme.accent_c,
+                    self.theme.accent_hue,
+                ];
                 let saved = &mut self.launcher_config.theme.saved_colors;
                 let is_dup = saved.iter().any(|s| {
                     (s[0] - entry[0]).abs() < 0.005
@@ -1718,9 +1728,8 @@ impl App {
                 self.launcher_config.theme.pill_overrides.remove(&tone_key);
             }
         }
-        let overrides = crate::theme::PillOverrides::from_prefs(
-            &self.launcher_config.theme.pill_overrides,
-        );
+        let overrides =
+            crate::theme::PillOverrides::from_prefs(&self.launcher_config.theme.pill_overrides);
         self.theme.refresh(&overrides);
         self.persist_theme();
     }
@@ -1792,12 +1801,9 @@ impl App {
                 ..Default::default()
             });
 
-        let logo_section = row![
-            logo,
-            text("Crabby").size(13).color(palette.fg_0),
-        ]
-        .spacing(8)
-        .align_y(iced::Alignment::Center);
+        let logo_section = row![logo, text("Crabby").size(13).color(palette.fg_0),]
+            .spacing(8)
+            .align_y(iced::Alignment::Center);
 
         // Tab label only - design uses small SVG icons but iced's
         // default font lacks the unicode glyphs that were tried, so
@@ -1809,26 +1815,25 @@ impl App {
             let inner = row![text(label).size(12).color(label_color)]
                 .spacing(7)
                 .align_y(iced::Alignment::Center);
-            let mut btn = button(inner)
-                .padding([7, 14])
-                .style(move |_t, _s| iced::widget::button::Style {
-                    background: Some(iced::Background::Color(if active {
-                        p.bg_2
-                    } else {
-                        iced::Color::TRANSPARENT
-                    })),
-                    text_color: label_color,
-                    border: iced::Border {
-                        // No border on the active tab so its bg_2 fill
-                        // visually merges with the body below.
-                        color: iced::Color::TRANSPARENT,
-                        width: 0.0,
-                        radius: iced::border::Radius::new(0)
-                            .top_left(7)
-                            .top_right(7),
-                    },
-                    ..Default::default()
-                });
+            let mut btn =
+                button(inner)
+                    .padding([7, 14])
+                    .style(move |_t, _s| iced::widget::button::Style {
+                        background: Some(iced::Background::Color(if active {
+                            p.bg_2
+                        } else {
+                            iced::Color::TRANSPARENT
+                        })),
+                        text_color: label_color,
+                        border: iced::Border {
+                            // No border on the active tab so its bg_2 fill
+                            // visually merges with the body below.
+                            color: iced::Color::TRANSPARENT,
+                            width: 0.0,
+                            radius: iced::border::Radius::new(0).top_left(7).top_right(7),
+                        },
+                        ..Default::default()
+                    });
             if !active {
                 btn = btn.on_press(Message::TabSelected(tab));
             }
@@ -1865,7 +1870,14 @@ impl App {
                 let bg = match status {
                     iced::widget::button::Status::Hovered
                     | iced::widget::button::Status::Pressed => {
-                        if danger { iced::Color { a: 0.18, ..p_local.err } } else { p_local.bg_3 }
+                        if danger {
+                            iced::Color {
+                                a: 0.18,
+                                ..p_local.err
+                            }
+                        } else {
+                            p_local.bg_3
+                        }
                     }
                     _ => iced::Color::TRANSPARENT,
                 };
@@ -1903,12 +1915,9 @@ impl App {
         // the window controls. Pressing in there starts the OS drag
         // loop. The buttons sit outside the mouse_area so button
         // clicks don't double-fire as drag initiation.
-        let drag_spacer = iced::widget::mouse_area(
-            container(text(""))
-                .width(Length::Fill)
-                .height(Length::Fill),
-        )
-        .on_press(Message::WindowDragStart);
+        let drag_spacer =
+            iced::widget::mouse_area(container(text("")).width(Length::Fill).height(Length::Fill))
+                .on_press(Message::WindowDragStart);
 
         let bar = row![
             logo_section,
@@ -1963,11 +1972,9 @@ impl App {
         // our palette rather than the system look.
         let profile_options: Vec<String> = self.profiles.all_profiles().to_vec();
         let p = palette;
-        let picker = pick_list(
-            profile_options,
-            Some(active_profile.to_string()),
-            |s| Message::Profiles(profiles::Message::SwitchProfile(s)),
-        )
+        let picker = pick_list(profile_options, Some(active_profile.to_string()), |s| {
+            Message::Profiles(profiles::Message::SwitchProfile(s))
+        })
         .text_size(14)
         .padding([4, 10])
         .style(move |_t, _s| iced::widget::pick_list::Style {
@@ -1986,20 +1993,28 @@ impl App {
         // entries - "+ Create new" and "✎ Edit" surface as small
         // buttons instead. Keeps the dropdown a pure switcher.
         let new_profile_btn = button(text("+").size(13))
-            .padding(iced::Padding { top: 2.0, right: 8.0, bottom: 2.0, left: 8.0 })
+            .padding(iced::Padding {
+                top: 2.0,
+                right: 8.0,
+                bottom: 2.0,
+                left: 8.0,
+            })
             .style(button_style(palette, ButtonKind::Ghost))
             .on_press(Message::Profiles(profiles::Message::OpenCreateModal));
         let edit_profile_btn = button(text("✎").size(13))
-            .padding(iced::Padding { top: 2.0, right: 8.0, bottom: 2.0, left: 8.0 })
+            .padding(iced::Padding {
+                top: 2.0,
+                right: 8.0,
+                bottom: 2.0,
+                left: 8.0,
+            })
             .style(button_style(palette, ButtonKind::Ghost))
             .on_press(Message::Profiles(profiles::Message::OpenEditModal));
         let picker_row = row![picker, new_profile_btn, edit_profile_btn]
             .spacing(4)
             .align_y(iced::Alignment::Center);
         let name_block = column![
-            text("ACTIVE PROFILE")
-                .size(10)
-                .color(palette.fg_2),
+            text("ACTIVE PROFILE").size(10).color(palette.fg_2),
             picker_row,
         ]
         .spacing(0);
@@ -2054,7 +2069,11 @@ impl App {
                 _ if needs_bake => ("Bake & Launch", Message::BakeAndLaunch, true),
                 _ => ("Launch game", Message::LaunchGame, true),
             };
-        let launch_kind = if launch_enabled { ButtonKind::Primary } else { ButtonKind::Default };
+        let launch_kind = if launch_enabled {
+            ButtonKind::Primary
+        } else {
+            ButtonKind::Default
+        };
         let mut launch_btn = button(text(launch_label).size(13))
             .padding([6, 14])
             .style(button_style(palette, launch_kind));
@@ -2148,9 +2167,7 @@ impl App {
             && !matches!(self.install, InstallStatus::Running);
         let body_with_banner: Element<'_, Message> = if needs_first_bake {
             let banner = self.first_run_banner(palette);
-            iced::widget::column![banner, body_inner]
-                .spacing(0)
-                .into()
+            iced::widget::column![banner, body_inner].spacing(0).into()
         } else {
             body_inner
         };
@@ -2192,7 +2209,9 @@ impl App {
     /// resolved. Centered card with copy + a Browse button.
     fn first_run_picker(&self) -> Element<'_, Message> {
         let p = self.theme.palette;
-        let title = text("Select your Road to Vostok install").size(20).color(p.fg_0);
+        let title = text("Select your Road to Vostok install")
+            .size(20)
+            .color(p.fg_0);
         let body = text(
             "We couldn't find the game automatically. \
              Pick the folder that contains RTV.exe (or RTV.x86_64) and RTV.pck.",
@@ -2248,7 +2267,11 @@ impl App {
             .height(Length::Fixed(6.0))
             .style(move |_t| iced::widget::container::Style {
                 background: Some(iced::Background::Color(dot_color)),
-                border: iced::Border { color: dot_color, width: 0.0, radius: 999.0.into() },
+                border: iced::Border {
+                    color: dot_color,
+                    width: 0.0,
+                    radius: 999.0.into(),
+                },
                 ..Default::default()
             });
 
@@ -2304,7 +2327,9 @@ impl App {
                 .size(11)
                 .style(text_style(palette, TextTone::Fg2)),
             dim2,
-            text(install_label).size(11).color(text_color(palette, install_tone)),
+            text(install_label)
+                .size(11)
+                .color(text_color(palette, install_tone)),
             style::hspace(),
             text(format!("crabby v{APP_VERSION}"))
                 .size(11)
@@ -2321,7 +2346,6 @@ impl App {
             .into()
     }
 }
-
 
 /// Granular theme changes from the Appearance sub-view or floating
 /// quick-theme panel. App applies the change to `self.theme`, rebuilds
@@ -2467,9 +2491,9 @@ async fn run_boot_scan(game_dir: Option<PathBuf>) -> Option<Box<BootScanResult>>
             .inspect_err(|e| tracing::warn!(error = %e, "ui: boot mod discovery failed"))
             .unwrap_or_default();
 
-        if let Err(e) = crabby_config::mod_index::rebuild_and_save_from_discovered(
-            &dir, &cfg, &discovered,
-        ) {
+        if let Err(e) =
+            crabby_config::mod_index::rebuild_and_save_from_discovered(&dir, &cfg, &discovered)
+        {
             tracing::warn!(error = %e, "ui: mod_index refresh failed");
         }
 
@@ -2565,7 +2589,6 @@ async fn rebuild_mod_cache(game_dir: PathBuf) -> Result<usize, String> {
     }
 }
 
-
 async fn run_install(game_dir: PathBuf) -> InstallOutcome {
     let res = tokio::task::spawn_blocking(move || {
         crabby_install::install(&crabby_install::InstallOptions {
@@ -2618,7 +2641,10 @@ fn fmt_relative_time(secs: Option<u64>) -> String {
     }
 }
 
-fn resolve_game_dir(cli_override: Option<&std::path::Path>, cfg: &LauncherConfig) -> Option<PathBuf> {
+fn resolve_game_dir(
+    cli_override: Option<&std::path::Path>,
+    cfg: &LauncherConfig,
+) -> Option<PathBuf> {
     if let Some(p) = cli_override
         && crabby_install::validate_game_dir(p).is_ok()
     {
@@ -2719,7 +2745,10 @@ async fn launch_game(game_dir: PathBuf) -> LaunchOutcome {
         let bin = match crabby_install::find_game_binary(&game_dir) {
             Ok(p) => p,
             Err(e) => {
-                return Err(std::io::Error::new(std::io::ErrorKind::NotFound, format!("{e}")));
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("{e}"),
+                ));
             }
         };
         let mut cmd = std::process::Command::new(&bin);
@@ -2793,19 +2822,17 @@ fn apply_modpack_profile_changes(
 ) -> Result<(), String> {
     use crabby_config::{ModConfig, ModEntry, Profile};
 
-    let mut cfg = ModConfig::load_or_default(game_dir)
-        .map_err(|e| format!("read mod_config.cfg: {e}"))?;
+    let mut cfg =
+        ModConfig::load_or_default(game_dir).map_err(|e| format!("read mod_config.cfg: {e}"))?;
 
     // Ensure profile exists.
     if !cfg.profiles.contains_key(target_profile) {
-        cfg.profiles.insert(target_profile.to_string(), Profile::default());
+        cfg.profiles
+            .insert(target_profile.to_string(), Profile::default());
     }
     cfg.active_profile = target_profile.to_string();
 
-    let profile = cfg
-        .profiles
-        .get_mut(target_profile)
-        .expect("just inserted");
+    let profile = cfg.profiles.get_mut(target_profile).expect("just inserted");
 
     // Optionally deactivate everything currently in the profile.
     if deactivate_existing {
@@ -2823,12 +2850,17 @@ fn apply_modpack_profile_changes(
             // Install pipeline will fill version after the download.
             profile.mods.insert(
                 pm.id.clone(),
-                ModEntry { enabled: true, version: pm.version.clone(), priority_override: None },
+                ModEntry {
+                    enabled: true,
+                    version: pm.version.clone(),
+                    priority_override: None,
+                },
             );
         }
     }
 
-    cfg.save(game_dir).map_err(|e| format!("write mod_config.cfg: {e}"))?;
+    cfg.save(game_dir)
+        .map_err(|e| format!("write mod_config.cfg: {e}"))?;
     if let Err(e) = crabby_config::mod_index::rebuild_and_save(game_dir) {
         tracing::warn!(error = %e, "modpack: mod_index refresh after import failed");
     }
@@ -2839,7 +2871,9 @@ fn apply_modpack_profile_changes(
         None => return Ok(()), // unsupported platform - nothing more to do
     };
     for (pm, status) in manifest.mods.iter().zip(statuses.iter_mut()) {
-        let Some(bytes) = pm.mcm_config.as_ref() else { continue };
+        let Some(bytes) = pm.mcm_config.as_ref() else {
+            continue;
+        };
         let dest_dir = mcm_root.join(&pm.id);
         let dest = dest_dir.join("config.ini");
         let exists = dest.exists();
@@ -2893,8 +2927,7 @@ fn copy_mod_into_mods_dir(
         .and_then(|n| n.to_str())
         .ok_or_else(|| "source path has no usable file name".to_string())?;
     let mods_dir = game_dir.join("Mods");
-    std::fs::create_dir_all(&mods_dir)
-        .map_err(|e| format!("mkdir {}: {e}", mods_dir.display()))?;
+    std::fs::create_dir_all(&mods_dir).map_err(|e| format!("mkdir {}: {e}", mods_dir.display()))?;
     let dest = mods_dir.join(file_name);
     if dest.exists() {
         return Err(format!(
@@ -3044,8 +3077,7 @@ async fn update_installed_mod(
             .and_then(|n| n.to_str())
             .unwrap_or("mod")
     ));
-    std::fs::write(&tmp_path, &bytes)
-        .map_err(|e| format!("write {}: {e}", tmp_path.display()))?;
+    std::fs::write(&tmp_path, &bytes).map_err(|e| format!("write {}: {e}", tmp_path.display()))?;
     if let Err(e) = std::fs::rename(&tmp_path, existing_path) {
         let _ = std::fs::remove_file(&tmp_path);
         return Err(format!("replace {}: {e}", existing_path.display()));
@@ -3074,7 +3106,11 @@ fn filename_from_download(url: &str, kind: &str, mod_name: &str) -> String {
         }
     }
     let ext = if kind.is_empty() { "vmz" } else { kind };
-    let base = if mod_name.trim().is_empty() { "mod" } else { mod_name.trim() };
+    let base = if mod_name.trim().is_empty() {
+        "mod"
+    } else {
+        mod_name.trim()
+    };
     sanitize_filename(&format!("{base}.{ext}"))
 }
 
@@ -3114,7 +3150,10 @@ fn is_supported_archive_kind(kind: &str) -> bool {
 fn sanitize_filename(name: &str) -> String {
     name.chars()
         .map(|c| {
-            if matches!(c, '/' | '\\' | '\0' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
+            if matches!(
+                c,
+                '/' | '\\' | '\0' | ':' | '*' | '?' | '"' | '<' | '>' | '|'
+            ) {
                 '_'
             } else {
                 c
@@ -3165,9 +3204,7 @@ async fn fetch_mw_one(
     } else {
         None
     };
-    let update = client
-        .check_update(mw_id, &local_version)
-        .await;
+    let update = client.check_update(mw_id, &local_version).await;
     let data = mods::MwData { mod_, user, update };
     (mod_id, Ok(data))
 }
@@ -3197,7 +3234,10 @@ async fn fetch_gallery(
     let last = files.len().saturating_sub(1);
     for (i, file) in files.into_iter().enumerate() {
         let started = std::time::Instant::now();
-        let res = client.get_image_bytes(&file).await.map_err(|e| format!("{e}"));
+        let res = client
+            .get_image_bytes(&file)
+            .await
+            .map_err(|e| format!("{e}"));
         out.push((file, res));
         let was_network = started.elapsed() > std::time::Duration::from_millis(50);
         if was_network && i < last {
@@ -3211,10 +3251,7 @@ async fn fetch_gallery(
 /// Requires section when a dep entry came back with `name == ""`.
 /// Failures yield empty strings; the caller filters those out and
 /// shows a `mod #N` fallback.
-async fn fetch_dep_names(
-    client: &crabby_modworkshop::Client,
-    ids: Vec<u64>,
-) -> Vec<(u64, String)> {
+async fn fetch_dep_names(client: &crabby_modworkshop::Client, ids: Vec<u64>) -> Vec<(u64, String)> {
     let mut out = Vec::with_capacity(ids.len());
     for id in ids {
         match client.get_mod(id).await {

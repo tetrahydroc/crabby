@@ -56,8 +56,7 @@ pub fn cache_filename(mod_id: &str, src_mtime: i64) -> String {
     // mod_id is allowed to contain slashes / colons / etc. for general
     // ids; sanitize to be filename-safe. Same slug rule the shim uses
     // for its in-memory zip cache so paths stay portable.
-    let safe = mod_id
-        .replace(['/', '\\', ':'], "_");
+    let safe = mod_id.replace(['/', '\\', ':'], "_");
     format!("{safe}.{src_mtime}.zip")
 }
 
@@ -85,8 +84,7 @@ pub fn cache_path_for(game_dir: &Path, mod_id: &str, src_mtime: i64) -> PathBuf 
 /// (they're handled by the runtime shim's per-launch zip path).
 pub fn rebuild_for_enabled(game_dir: &Path, index: &ModIndex) -> Result<usize> {
     let cache_dir = game_dir.join(MOD_CACHE_REL_DIR);
-    fs::create_dir_all(&cache_dir)
-        .map_err(|s| CrabbyError::io_at(cache_dir.clone(), s))?;
+    fs::create_dir_all(&cache_dir).map_err(|s| CrabbyError::io_at(cache_dir.clone(), s))?;
 
     let mut built = 0usize;
     // Track every filename touched (built or already-current) so the
@@ -118,7 +116,9 @@ pub fn rebuild_for_enabled(game_dir: &Path, index: &ModIndex) -> Result<usize> {
     if let Ok(read_dir) = fs::read_dir(&cache_dir) {
         for entry in read_dir.flatten() {
             let name = entry.file_name();
-            let Some(name_str) = name.to_str() else { continue };
+            let Some(name_str) = name.to_str() else {
+                continue;
+            };
             if !current.contains(name_str) {
                 let _ = fs::remove_file(entry.path());
             }
@@ -134,8 +134,7 @@ pub fn rebuild_for_enabled(game_dir: &Path, index: &ModIndex) -> Result<usize> {
 /// with temp dirs. The transform is applied to `.gd` entries only;
 /// every other entry is copied through verbatim.
 pub fn rewrite_archive(src: &Path, dst: &Path) -> Result<()> {
-    let f = fs::File::open(src)
-        .map_err(|s| CrabbyError::io_at(src.to_path_buf(), s))?;
+    let f = fs::File::open(src).map_err(|s| CrabbyError::io_at(src.to_path_buf(), s))?;
     let mut zip_in = zip::ZipArchive::new(f).map_err(|s| CrabbyError::Config {
         context: format!("opening {} as zip", src.display()),
         source: Box::new(s),
@@ -145,17 +144,15 @@ pub fn rewrite_archive(src: &Path, dst: &Path) -> Result<()> {
     // leave a half-built cache that fools subsequent runs.
     let tmp = dst.with_extension("zip.tmp");
     if let Some(parent) = tmp.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|s| CrabbyError::io_at(parent.to_path_buf(), s))?;
+        fs::create_dir_all(parent).map_err(|s| CrabbyError::io_at(parent.to_path_buf(), s))?;
     }
-    let f_out = fs::File::create(&tmp)
-        .map_err(|s| CrabbyError::io_at(tmp.clone(), s))?;
+    let f_out = fs::File::create(&tmp).map_err(|s| CrabbyError::io_at(tmp.clone(), s))?;
     let mut zip_out = zip::ZipWriter::new(f_out);
     // Match the shim's zip output: `Stored` (no compression) so mount
     // time isn't paying decompression cost. Vmz archives in the wild
     // are mixed; normalized to stored for runtime perf.
-    let opts: zip::write::FileOptions<()> = zip::write::FileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored);
+    let opts: zip::write::FileOptions<()> =
+        zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
     for i in 0..zip_in.len() {
         let mut entry = zip_in.by_index(i).map_err(|s| CrabbyError::Config {
@@ -164,7 +161,9 @@ pub fn rewrite_archive(src: &Path, dst: &Path) -> Result<()> {
         })?;
         let entry_name = entry.name().to_owned();
         let mut bytes = Vec::with_capacity(entry.size() as usize);
-        entry.read_to_end(&mut bytes).map_err(|s| CrabbyError::io_at(src.to_path_buf(), s))?;
+        entry
+            .read_to_end(&mut bytes)
+            .map_err(|s| CrabbyError::io_at(src.to_path_buf(), s))?;
         if entry_name.to_ascii_lowercase().ends_with(".gd") {
             if let Ok(text) = std::str::from_utf8(&bytes) {
                 let rewritten = rewrite_const_resource_preloads(text);
@@ -294,9 +293,15 @@ const Other := preload("res://script.gd")
 var foo: int = 0
 "#;
         let out = rewrite_const_resource_preloads(src);
-        assert!(out.contains("var Settings = preload(\"res://settings.tres\")"), "{out}");
+        assert!(
+            out.contains("var Settings = preload(\"res://settings.tres\")"),
+            "{out}"
+        );
         // Script preload stays unchanged.
-        assert!(out.contains("const Other := preload(\"res://script.gd\")"), "{out}");
+        assert!(
+            out.contains("const Other := preload(\"res://script.gd\")"),
+            "{out}"
+        );
         // Other lines untouched.
         assert!(out.contains("var foo: int = 0"));
     }

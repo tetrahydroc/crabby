@@ -57,12 +57,13 @@ fn trader_improvements_parses_clean() {
         }
     }
 
-    eprintln!(
-        "parsed {total_files} files, {total_funcs} funcs, {total_vars} vars",
-    );
+    eprintln!("parsed {total_files} files, {total_funcs} funcs, {total_vars} vars",);
 
     if !failures.is_empty() {
         panic!("parse failures:\n  {}", failures.join("\n  "));
     }
-    assert!(total_files >= 4, "expected to parse all 4 mod files, got {total_files}");
+    assert!(
+        total_files >= 4,
+        "expected to parse all 4 mod files, got {total_files}"
+    );
 }

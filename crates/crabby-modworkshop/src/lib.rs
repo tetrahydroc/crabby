@@ -40,5 +40,5 @@ mod model;
 
 pub use cache::{cache_dir, cache_path, image_cache_path};
 pub use catalog::{GameFilter, MwCatalog, RemoteCatalog, RemoteListing};
-pub use client::{image_url, Client, ClientError, UpdateStatus};
+pub use client::{Client, ClientError, UpdateStatus, image_url};
 pub use model::{Dependency, Image, Mod, ModDownload, Tag, User};

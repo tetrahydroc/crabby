@@ -74,7 +74,10 @@ fn round_trips_multiple_entries_in_order() {
     assert_eq!(entries[0].path, "res://a.gd");
     assert_eq!(entries[1].path, "res://Scripts/B.gd");
     assert_eq!(entries[2].path, "res://c.bin");
-    let payloads: Vec<_> = entries.iter().map(|e| archive.read(e).expect("read")).collect();
+    let payloads: Vec<_> = entries
+        .iter()
+        .map(|e| archive.read(e).expect("read"))
+        .collect();
     assert_eq!(payloads[0], b"first");
     assert_eq!(payloads[1], b"second entry, longer");
     assert_eq!(payloads[2], vec![0u8, 1, 2, 3, 4, 5]);

@@ -112,11 +112,7 @@ impl PckWriter {
                 .map_err(|source| CrabbyError::io_at(out_path.to_path_buf(), source))?;
         }
         fs::rename(&tmp_path, out_path).map_err(|source| CrabbyError::Pck {
-            context: format!(
-                "renaming {} → {}",
-                tmp_path.display(),
-                out_path.display(),
-            ),
+            context: format!("renaming {} → {}", tmp_path.display(), out_path.display(),),
             source: Box::new(source),
         })?;
 
@@ -147,8 +143,8 @@ impl PckWriter {
     /// loader expects this shape; the directory-first layout the reader
     /// also accepts is for embedded packs only.
     fn write_direct(self, path: &Path) -> Result<()> {
-        let file = File::create(path)
-            .map_err(|source| CrabbyError::io_at(path.to_path_buf(), source))?;
+        let file =
+            File::create(path).map_err(|source| CrabbyError::io_at(path.to_path_buf(), source))?;
         let mut w = BufWriter::new(file);
 
         let header_len = match self.format_version {
@@ -277,12 +273,20 @@ impl PckWriter {
         for (entry, abs_offset) in self.entries.iter().zip(entry_offsets.iter()) {
             let path_bytes = entry.path.as_bytes();
             let path_len = u32::try_from(path_bytes.len()).map_err(|source| CrabbyError::Pck {
-                context: format!("path len {} exceeds u32 ({:?})", path_bytes.len(), entry.path),
+                context: format!(
+                    "path len {} exceeds u32 ({:?})",
+                    path_bytes.len(),
+                    entry.path
+                ),
                 source: Box::new(source),
             })?;
             write_u32(w, path_len)?;
             write_all(w, path_bytes)?;
-            let stored_offset = if v3 { abs_offset - file_base } else { *abs_offset };
+            let stored_offset = if v3 {
+                abs_offset - file_base
+            } else {
+                *abs_offset
+            };
             write_u64(w, stored_offset)?;
             write_u64(w, entry.bytes.len() as u64)?;
             write_all(w, &entry.md5)?;
@@ -302,17 +306,19 @@ fn temp_path_for(target: &Path) -> PathBuf {
 }
 
 fn write_u32<W: Write>(w: &mut W, v: u32) -> Result<()> {
-    w.write_all(&v.to_le_bytes()).map_err(|source| CrabbyError::Pck {
-        context: format!("writing u32={v}"),
-        source: Box::new(source),
-    })
+    w.write_all(&v.to_le_bytes())
+        .map_err(|source| CrabbyError::Pck {
+            context: format!("writing u32={v}"),
+            source: Box::new(source),
+        })
 }
 
 fn write_u64<W: Write>(w: &mut W, v: u64) -> Result<()> {
-    w.write_all(&v.to_le_bytes()).map_err(|source| CrabbyError::Pck {
-        context: format!("writing u64={v}"),
-        source: Box::new(source),
-    })
+    w.write_all(&v.to_le_bytes())
+        .map_err(|source| CrabbyError::Pck {
+            context: format!("writing u64={v}"),
+            source: Box::new(source),
+        })
 }
 
 fn write_all<W: Write>(w: &mut W, bytes: &[u8]) -> Result<()> {

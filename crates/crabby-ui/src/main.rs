@@ -17,11 +17,11 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use crabby_ui::launcher_config;
 use crabby_ui::App;
+use crabby_ui::launcher_config;
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::EnvFilter;
 
 fn main() -> ExitCode {
     // Decide UI vs CLI based on the first positional arg. This happens
@@ -84,8 +84,8 @@ fn run_ui(args: Vec<String>) -> ExitCode {
     // The `_guard` keeps tracing-appender's background flush thread
     // alive for the process lifetime; dropping it would silently
     // discard buffered log lines on shutdown.
-    let env_filter = EnvFilter::try_from_env("CRABBY_LOG")
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let env_filter =
+        EnvFilter::try_from_env("CRABBY_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
     let stderr_layer = tracing_subscriber::fmt::layer().with_writer(std::io::stderr);
 
     let _file_guard = if let Some(log_dir) = launcher_config::log_dir() {
@@ -93,10 +93,8 @@ fn run_ui(args: Vec<String>) -> ExitCode {
             eprintln!("crabby: log dir {} unavailable: {e}", log_dir.display());
             None
         } else {
-            let appender = tracing_appender::rolling::daily(
-                &log_dir,
-                launcher_config::LOG_FILE_PREFIX,
-            );
+            let appender =
+                tracing_appender::rolling::daily(&log_dir, launcher_config::LOG_FILE_PREFIX);
             let (nb_writer, guard) = tracing_appender::non_blocking(appender);
             let file_layer = tracing_subscriber::fmt::layer()
                 .json()
@@ -138,20 +136,20 @@ fn run_ui(args: Vec<String>) -> ExitCode {
         App::update,
         App::view,
     )
-        .title(App::title)
-        .theme(App::theme)
-        .subscription(App::subscription)
-        .decorations(false)
-        .font(INTER_REGULAR)
-        .font(INTER_MEDIUM)
-        .font(INTER_SEMIBOLD)
-        .font(INTER_BOLD)
-        .font(JBM_REGULAR)
-        .font(JBM_MEDIUM)
-        .font(JBM_BOLD)
-        .font(TWEMOJI)
-        .default_font(iced::Font::with_name("Inter"))
-        .run();
+    .title(App::title)
+    .theme(App::theme)
+    .subscription(App::subscription)
+    .decorations(false)
+    .font(INTER_REGULAR)
+    .font(INTER_MEDIUM)
+    .font(INTER_SEMIBOLD)
+    .font(INTER_BOLD)
+    .font(JBM_REGULAR)
+    .font(JBM_MEDIUM)
+    .font(JBM_BOLD)
+    .font(TWEMOJI)
+    .default_font(iced::Font::with_name("Inter"))
+    .run();
 
     match result {
         Ok(()) => ExitCode::SUCCESS,

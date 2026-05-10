@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use crabby_mod_analyzer::{analyze_mod, ModIntent};
+use crabby_mod_analyzer::{ModIntent, analyze_mod};
 
 const DEV_ROOT: &str = "/mnt/c/Users/ashou/GitHub/thc/Road to Vostok/Mods";
 const GAME_ROOT: &str = "/mnt/e/SteamLibrary/steamapps/common/Road to Vostok/Mods";
@@ -43,7 +43,11 @@ fn all_mods_sweep() {
             if !path.is_dir() {
                 continue;
             }
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap().to_string();
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap()
+                .to_string();
             // Skip non-mod dirs (crabby itself, etc.).
             if name.starts_with('.') || name == "vostok-mod-loader" || name == "crabby-loader" {
                 continue;
@@ -69,7 +73,11 @@ fn all_mods_sweep() {
             if ext != "vmz" && ext != "zip" {
                 continue;
             }
-            let stem = path.file_stem().and_then(|n| n.to_str()).unwrap().to_string();
+            let stem = path
+                .file_stem()
+                .and_then(|n| n.to_str())
+                .unwrap()
+                .to_string();
             let files = match read_archive_mod(&path) {
                 Ok(v) => v,
                 Err(e) => {
@@ -111,9 +119,7 @@ fn all_mods_sweep() {
             eprintln!("MATCH    dev=`{dev_name}` archive=`{game_name}`  {dev_sum:?}");
         }
     }
-    eprintln!(
-        "\nparity: {compared} comparable mod(s), {diverged} divergence(s)",
-    );
+    eprintln!("\nparity: {compared} comparable mod(s), {diverged} divergence(s)",);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -160,7 +166,13 @@ impl From<&ModIntent> for Summary {
 fn print_summary(name: &str, s: &Summary) {
     eprintln!(
         "  {name:50} files={:3}  hooks={:3} (static {:3})  reg={:3}  classic H/W/I={}/{}/{}",
-        s.files, s.hooks, s.static_hooks, s.registry_writes, s.classic_hard, s.classic_warn, s.classic_info,
+        s.files,
+        s.hooks,
+        s.static_hooks,
+        s.registry_writes,
+        s.classic_hard,
+        s.classic_warn,
+        s.classic_info,
     );
 }
 
@@ -173,7 +185,9 @@ fn read_folder_mod(dir: &Path) -> Vec<(String, String)> {
 }
 
 fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, String)>) {
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in rd.flatten() {
         let path = entry.path();
         // Skip dot-dirs (.git etc).
@@ -188,7 +202,11 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, String)>) {
         if path.is_dir() {
             walk(root, &path, out);
         } else if path.extension().and_then(|e| e.to_str()) == Some("gd") {
-            let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().into_owned();
+            let rel = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .into_owned();
             if let Ok(s) = std::fs::read_to_string(&path) {
                 out.push((rel, s));
             }

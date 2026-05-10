@@ -20,9 +20,7 @@ use crabby_bake::{BakeKey, BakePckInputs, BakePckOutputs, bake_pck};
 use crabby_error::{CrabbyError, Result};
 use tracing::{debug, info, warn};
 
-use crate::artifacts::{
-    LEGACY_SHIM_FILE_NAME, OVERRIDE_CFG_BACKUP_NAME, OVERRIDE_CFG_NAME,
-};
+use crate::artifacts::{LEGACY_SHIM_FILE_NAME, OVERRIDE_CFG_BACKUP_NAME, OVERRIDE_CFG_NAME};
 use crate::game_dir::validate_game_dir;
 use crate::manifest::InstallManifest;
 use crate::override_cfg;
@@ -97,7 +95,9 @@ pub fn install(opts: &InstallOptions<'_>) -> Result<InstallReport> {
     let recorded_vanilla = existing
         .as_ref()
         .and_then(|m| m.vanilla_pck_hash.as_deref());
-    let recorded_baked = existing.as_ref().and_then(|m| m.last_baked_pck_hash.as_deref());
+    let recorded_baked = existing
+        .as_ref()
+        .and_then(|m| m.last_baked_pck_hash.as_deref());
 
     let state = classify_pck(opts.game_dir, recorded_vanilla, recorded_baked)?;
     debug!(?state, "current pck state");
@@ -190,8 +190,7 @@ pub fn install(opts: &InstallOptions<'_>) -> Result<InstallReport> {
     // the same hook bases. Without them, the digest would match the
     // prior bake and install would short-circuit to AlreadyCurrent.
     // Same goes for no-hook mods (pure registry / UI) toggling enabled.
-    let enabled_mod_ids: Vec<String> =
-        pre_bake_intents.iter().map(|i| i.mod_id.clone()).collect();
+    let enabled_mod_ids: Vec<String> = pre_bake_intents.iter().map(|i| i.mod_id.clone()).collect();
     let mods_digest = crabby_bake::mods_digest_from_kinds(
         hooked_kinds
             .iter()
@@ -202,8 +201,7 @@ pub fn install(opts: &InstallOptions<'_>) -> Result<InstallReport> {
     // Compute the bake key against the backup (vanilla source of
     // truth) folded with the mods digest. Mismatch with the recorded
     // manifest key = bake-out-of-date.
-    let current_key =
-        BakeKey::from_pck_with_mods(opts.crabby_version, &backup, &mods_digest)?;
+    let current_key = BakeKey::from_pck_with_mods(opts.crabby_version, &backup, &mods_digest)?;
 
     // Decide: skip bake if everything is current, no force.
     //
@@ -285,16 +283,14 @@ pub fn install(opts: &InstallOptions<'_>) -> Result<InstallReport> {
 /// Run the analyzer over enabled mods and emit a one-line summary per
 /// mod plus an aggregate. Pure logging; never bails.
 fn log_mod_analysis(game_dir: &Path, schema: &crabby_mod_analyzer::VanillaSchema) {
-    let intents = match crabby_mod_analyzer::analyze_active_profile_with_schema(
-        game_dir,
-        Some(schema),
-    ) {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!(error = %e, "analyzer: profile analysis failed; skipping report");
-            return;
-        }
-    };
+    let intents =
+        match crabby_mod_analyzer::analyze_active_profile_with_schema(game_dir, Some(schema)) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, "analyzer: profile analysis failed; skipping report");
+                return;
+            }
+        };
     if intents.is_empty() {
         info!("analyzer: no enabled mods to analyze");
         return;

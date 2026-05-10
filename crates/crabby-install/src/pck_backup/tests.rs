@@ -84,8 +84,7 @@ fn classify_returns_ours_when_hash_matches_baked() {
     let tmp = TempDir::new("classify-ours");
     tmp.write_pck(b"our baked pck bytes");
     let baked_hash = hash_file(&tmp.path.join(VANILLA_PCK_NAME)).expect("hash");
-    let st =
-        classify_pck(&tmp.path, Some("not-this"), Some(&baked_hash)).expect("classify");
+    let st = classify_pck(&tmp.path, Some("not-this"), Some(&baked_hash)).expect("classify");
     assert_eq!(st, PckState::OursCurrent { hash: baked_hash });
 }
 
@@ -147,7 +146,11 @@ fn ensure_backup_refreshes_when_pck_changed_since_last_backup() {
     tmp.write_pck(b"vanilla v1");
     let h_v1 = ensure_backup(&tmp.path).expect("first ensure");
 
-    fs::write(tmp.path.join(VANILLA_PCK_NAME), b"vanilla v2 (Steam updated)").unwrap();
+    fs::write(
+        tmp.path.join(VANILLA_PCK_NAME),
+        b"vanilla v2 (Steam updated)",
+    )
+    .unwrap();
     let h_v2 = ensure_backup(&tmp.path).expect("refresh");
     assert_ne!(h_v1, h_v2);
     let backup_bytes = fs::read(tmp.path.join(VANILLA_PCK_BACKUP_NAME)).unwrap();

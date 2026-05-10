@@ -95,7 +95,10 @@ impl State {
     /// on stale data rather than allow it).
     #[must_use]
     pub fn is_baked(&self) -> bool {
-        matches!(self.snapshot.pck_state, Some(crabby_install::PckState::OursCurrent { .. }))
+        matches!(
+            self.snapshot.pck_state,
+            Some(crabby_install::PckState::OursCurrent { .. })
+        )
     }
 
     /// True when the snapshot has been populated at least once. Used
@@ -300,7 +303,10 @@ impl State {
         .align_y(iced::Alignment::Center);
 
         let body: Element<'a, Message> = if !s.populated {
-            text("Click Refresh to load diagnostics.").size(12).color(p.fg_3).into()
+            text("Click Refresh to load diagnostics.")
+                .size(12)
+                .color(p.fg_3)
+                .into()
         } else {
             column![
                 eyebrow("INSTALL"),
@@ -309,7 +315,10 @@ impl State {
                 kv_row("Installed at", format_unix(s.installed_at)),
                 kv_row("Placed files", as_or_dash(s.placed_files)),
                 eyebrow("PCK"),
-                kv_row("Current state", s.pck_state_label.clone().unwrap_or_else(|| "—".into())),
+                kv_row(
+                    "Current state",
+                    s.pck_state_label.clone().unwrap_or_else(|| "—".into())
+                ),
                 kv_row("Vanilla hash", short_hash(s.vanilla_hash.as_deref())),
                 kv_row("Last baked hash", short_hash(s.last_baked_hash.as_deref())),
             ]
@@ -332,17 +341,16 @@ impl State {
         // Section heading style - used for both Diagnostics and
         // Launcher sections; iced doesn't support reusable widget
         // closures cleanly so it's inlined as a helper here.
-        let eyebrow = |label: &'a str| {
-            text(label)
-                .size(11)
-                .color(p.fg_2)
-        };
+        let eyebrow = |label: &'a str| text(label).size(11).color(p.fg_2);
 
         let kv_row = |label: &'a str, value: String| -> Element<'a, Message> {
             let p = p;
             container(
                 row![
-                    text(label).size(12).color(p.fg_2).width(Length::Fixed(180.0)),
+                    text(label)
+                        .size(12)
+                        .color(p.fg_2)
+                        .width(Length::Fixed(180.0)),
                     text(value).size(12).color(p.fg_0),
                 ]
                 .spacing(12)
@@ -375,7 +383,10 @@ impl State {
         .align_y(iced::Alignment::Center);
 
         let body: Element<'a, Message> = if !s.populated {
-            text("Click Refresh to load diagnostics.").size(12).color(p.fg_3).into()
+            text("Click Refresh to load diagnostics.")
+                .size(12)
+                .color(p.fg_3)
+                .into()
         } else {
             let mut col = column![
                 eyebrow("INSTALL"),
@@ -384,7 +395,10 @@ impl State {
                 kv_row("Installed at", format_unix(s.installed_at)),
                 kv_row("Placed files", as_or_dash(s.placed_files)),
                 eyebrow("PCK"),
-                kv_row("Current state", s.pck_state_label.clone().unwrap_or_else(|| "—".into())),
+                kv_row(
+                    "Current state",
+                    s.pck_state_label.clone().unwrap_or_else(|| "—".into())
+                ),
                 kv_row("Vanilla hash", short_hash(s.vanilla_hash.as_deref())),
                 kv_row("Last baked hash", short_hash(s.last_baked_hash.as_deref())),
                 eyebrow("LAUNCHER"),
@@ -435,15 +449,11 @@ impl State {
             col.into()
         };
 
-        container(scrollable(
-            column![header, body]
-                .spacing(14)
-                .padding(20),
-        ))
-        .style(surface_style(p, SurfaceKind::Bg2))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        container(scrollable(column![header, body].spacing(14).padding(20)))
+            .style(surface_style(p, SurfaceKind::Bg2))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
     }
 }
 
@@ -452,8 +462,7 @@ fn build_snapshot(game_dir: Option<&Path>) -> Snapshot {
         populated: true,
         ..Snapshot::default()
     };
-    s.launcher_config_path = crate::launcher_config::config_path()
-        .map(|p| p.display().to_string());
+    s.launcher_config_path = crate::launcher_config::config_path().map(|p| p.display().to_string());
 
     let Some(dir) = game_dir else {
         return s;
@@ -473,7 +482,11 @@ fn build_snapshot(game_dir: Option<&Path>) -> Snapshot {
             s.vanilla_hash = m.vanilla_pck_hash.clone();
             s.last_baked_hash = m.last_baked_pck_hash.clone();
             // Classify the live PCK against the recorded hashes.
-            match classify_pck(dir, m.vanilla_pck_hash.as_deref(), m.last_baked_pck_hash.as_deref()) {
+            match classify_pck(
+                dir,
+                m.vanilla_pck_hash.as_deref(),
+                m.last_baked_pck_hash.as_deref(),
+            ) {
                 Ok(state) => {
                     s.pck_state_label = Some(format!("{state:?}"));
                     s.pck_state = Some(state);
@@ -497,7 +510,11 @@ fn build_snapshot(game_dir: Option<&Path>) -> Snapshot {
 fn root_row<'a>(root: &'a RootEntry, palette: Palette) -> Element<'a, Message> {
     let p = palette;
     let dev_label = if root.dev { "DEV ✓" } else { "DEV" };
-    let dev_kind = if root.dev { ButtonKind::Primary } else { ButtonKind::Ghost };
+    let dev_kind = if root.dev {
+        ButtonKind::Primary
+    } else {
+        ButtonKind::Ghost
+    };
     let dev_btn = button(text(dev_label).size(10))
         .padding([3, 8])
         .style(button_style(p, dev_kind))
@@ -550,7 +567,10 @@ fn mutate_roots(
 fn kv_row_widget<'a>(label: &'a str, value: String, p: Palette) -> Element<'a, Message> {
     container(
         row![
-            text(label).size(12).color(p.fg_2).width(Length::Fixed(180.0)),
+            text(label)
+                .size(12)
+                .color(p.fg_2)
+                .width(Length::Fixed(180.0)),
             text(value).size(12).color(p.fg_0),
         ]
         .spacing(12)

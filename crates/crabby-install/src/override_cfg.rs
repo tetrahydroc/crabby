@@ -236,7 +236,10 @@ mod tests {
         // The in-PCK Lib autoload must be present in every render. If
         // it's missing the modding API never mounts.
         let out = render("");
-        assert!(out.contains("Lib=\"*res://Lib.gd\""), "Lib autoload missing:\n{out}");
+        assert!(
+            out.contains("Lib=\"*res://Lib.gd\""),
+            "Lib autoload missing:\n{out}"
+        );
     }
 
     #[test]

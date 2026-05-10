@@ -136,10 +136,7 @@ impl ModManifest {
     pub fn read_from_dir(dir_path: &Path) -> Result<Self> {
         let mod_txt_path = dir_path.join("mod.txt");
         let bytes = fs::read(&mod_txt_path).map_err(|s| CrabbyError::Manifest {
-            context: format!(
-                "folder {} has no mod.txt at its root",
-                dir_path.display(),
-            ),
+            context: format!("folder {} has no mod.txt at its root", dir_path.display(),),
             source: Box::new(s),
         })?;
         Self::parse(&bytes)

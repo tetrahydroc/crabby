@@ -63,7 +63,10 @@ pub fn keycode_label(code: i64) -> String {
     }
     // Strip modifier bits (callers may pass a raw event code).
     let bare = code & ((1 << 23) - 1);
-    if let Some(name) = SPECIAL_KEYS.iter().find_map(|(k, n)| (*k == bare).then_some(*n)) {
+    if let Some(name) = SPECIAL_KEYS
+        .iter()
+        .find_map(|(k, n)| (*k == bare).then_some(*n))
+    {
         return name.into();
     }
     // Printable ASCII range: 0x20..=0x7E. Godot uses uppercase letters

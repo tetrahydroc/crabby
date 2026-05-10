@@ -15,7 +15,9 @@
 //! at paths like `res://Traders/Generalist/Task_X.tres`; the stem
 //! (`Task_X`) is the natural id.
 
-use crate::id_index_transform::{IdIndexConfig, IdSource, IndexShape, transform as id_index_transform};
+use crate::id_index_transform::{
+    IdIndexConfig, IdSource, IndexShape, transform as id_index_transform,
+};
 
 /// Filename of the shared TraderData schema script.
 pub const TRADER_DATA_SCHEMA_FILENAME: &str = "TraderData.gd";
@@ -52,7 +54,10 @@ mod tests {
         assert!(out.contains("var _id_index: Dictionary = {}"), "{out}");
         assert!(out.contains("for r in tasks:"), "{out}");
         assert!(out.contains("get_basename"), "{out}");
-        assert!(out.contains("func _index_add(id: String, entry: TaskData)"), "{out}");
+        assert!(
+            out.contains("func _index_add(id: String, entry: TaskData)"),
+            "{out}"
+        );
     }
 
     #[test]

@@ -4,7 +4,9 @@
 //! `EventData` Resource directly, keyed by file-stem. See
 //! `id_index_transform` for the underlying machinery.
 
-use crate::id_index_transform::{IdIndexConfig, IdSource, IndexShape, transform as id_index_transform};
+use crate::id_index_transform::{
+    IdIndexConfig, IdSource, IndexShape, transform as id_index_transform,
+};
 
 /// Filename of vanilla's Events resource script.
 pub const EVENTS_SCHEMA_FILENAME: &str = "Events.gd";
@@ -38,7 +40,10 @@ mod tests {
         let out = transform(EVENTS_SCHEMA_FILENAME, VANILLA_EVENTS);
         assert!(out.contains("var _id_index: Dictionary = {}"), "{out}");
         assert!(out.contains("for r in events:"), "{out}");
-        assert!(out.contains("func _index_add(id: String, entry: EventData)"), "{out}");
+        assert!(
+            out.contains("func _index_add(id: String, entry: EventData)"),
+            "{out}"
+        );
     }
 
     #[test]

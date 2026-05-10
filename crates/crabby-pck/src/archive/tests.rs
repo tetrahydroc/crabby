@@ -407,7 +407,10 @@ fn rewrite_to_replaces_entry_bytes_and_recomputes_md5() {
     archive
         .rewrite_to(&out_path, |entry, bytes| {
             if entry.path == "res://alpha.gd" {
-                Some((entry.path.clone(), b"REPLACED CONTENT, MUCH LARGER THAN ORIGINAL".to_vec()))
+                Some((
+                    entry.path.clone(),
+                    b"REPLACED CONTENT, MUCH LARGER THAN ORIGINAL".to_vec(),
+                ))
             } else {
                 let _ = bytes; // observe-only path
                 None
@@ -418,7 +421,10 @@ fn rewrite_to_replaces_entry_bytes_and_recomputes_md5() {
     let mut out = PckArchive::open(&out_path).expect("open out");
     let e0 = out.entries()[0].clone();
     let e1 = out.entries()[1].clone();
-    assert_eq!(out.read(&e0).expect("read"), b"REPLACED CONTENT, MUCH LARGER THAN ORIGINAL");
+    assert_eq!(
+        out.read(&e0).expect("read"),
+        b"REPLACED CONTENT, MUCH LARGER THAN ORIGINAL"
+    );
     // MD5 was recomputed for the replaced entry.
     use md5::Digest as _;
     let mut h = md5::Md5::new();
@@ -461,7 +467,10 @@ fn rewrite_to_changes_entry_path() {
     let paths: Vec<_> = out.entries().iter().map(|e| e.path.clone()).collect();
     assert_eq!(
         paths,
-        vec!["res://alpha.gd".to_owned(), "res://Scripts/Beta.txt".to_owned()],
+        vec![
+            "res://alpha.gd".to_owned(),
+            "res://Scripts/Beta.txt".to_owned()
+        ],
     );
 
     let _ = std::fs::remove_file(&out_path);

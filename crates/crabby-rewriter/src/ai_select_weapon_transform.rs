@@ -171,7 +171,10 @@ mod tests {
             .find("Crabby ai_loadouts prelude")
             .expect("prelude present");
         let body_pos = out.find("weapons.get_child_count()").expect("body present");
-        assert!(sig_pos < prelude_pos, "prelude must follow signature\n{out}");
+        assert!(
+            sig_pos < prelude_pos,
+            "prelude must follow signature\n{out}"
+        );
         assert!(prelude_pos < body_pos, "prelude must precede body\n{out}");
         assert!(out.contains("_rtv_apply_ai_loadouts()"), "{out}");
     }
@@ -180,7 +183,10 @@ mod tests {
     fn appends_apply_and_category_helpers() {
         let src = "extends Node\n\nfunc SelectWeapon():\n\tpass\n";
         let out = transform("AI.gd", src, "\t");
-        assert!(out.contains("func _rtv_apply_ai_loadouts() -> void:"), "{out}");
+        assert!(
+            out.contains("func _rtv_apply_ai_loadouts() -> void:"),
+            "{out}"
+        );
         assert!(out.contains("func _rtv_ai_category() -> String:"), "{out}");
         assert!(
             out.contains("Engine.get_meta(\"_rtv_ai_loadouts\", [])"),

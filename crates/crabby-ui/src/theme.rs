@@ -139,9 +139,7 @@ impl PillOverrides {
     /// are ignored (forward-compatible with future tones).
     #[must_use]
     pub fn from_prefs(map: &std::collections::BTreeMap<String, [f32; 3]>) -> Self {
-        let pick = |key: &str| {
-            map.get(key).map(|lch| Oklch(lch[0], lch[1], lch[2]))
-        };
+        let pick = |key: &str| map.get(key).map(|lch| Oklch(lch[0], lch[1], lch[2]));
         Self {
             ok: pick("ok"),
             warn: pick("warn"),
@@ -277,11 +275,7 @@ impl Default for CrabbyTheme {
         let accent_hue = 220.0_f32;
         let bg_tint_hue = 240.0_f32;
         Self {
-            palette: Palette::with_accent(
-                mode,
-                Oklch(accent_l, accent_c, accent_hue),
-                bg_tint_hue,
-            ),
+            palette: Palette::with_accent(mode, Oklch(accent_l, accent_c, accent_hue), bg_tint_hue),
             mode,
             accent_l,
             accent_c,
@@ -437,6 +431,10 @@ mod tests {
         prefs.pill_overrides.insert("ok".into(), [0.66, 0.17, 25.0]);
         let theme = CrabbyTheme::from_prefs(&prefs);
         // Resolved `ok` should be red-leaning, not green.
-        assert!(theme.palette.ok.r > theme.palette.ok.g, "{:?}", theme.palette.ok);
+        assert!(
+            theme.palette.ok.r > theme.palette.ok.g,
+            "{:?}",
+            theme.palette.ok
+        );
     }
 }

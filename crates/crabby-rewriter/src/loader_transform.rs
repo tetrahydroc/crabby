@@ -113,9 +113,7 @@ pub fn transform(filename: &str, source: &str, indent: &str) -> String {
         let line = lines[i];
 
         // Rewrite `const shelters = [...]` -> snapshot var + mutable var.
-        if !shelters_replaced
-            && let Some(caps) = SHELTERS_CONST.captures(line)
-        {
+        if !shelters_replaced && let Some(caps) = SHELTERS_CONST.captures(line) {
             let array_lit = caps.get(1).map_or("[]", |m| m.as_str()).to_string();
             shelters_list = Some(array_lit.clone());
             out.push(format!("var {VANILLA_SHELTERS_VAR}: Array = {array_lit}"));
@@ -216,10 +214,14 @@ fn load_scene_prelude_lines(indent: &str) -> Vec<String> {
         // B_Loader compat: transition_text overrides the loading-screen
         // label. Vanilla never reads `scene` again after the label
         // line, so reassigning here is safe.
-        format!("{i1}{i1}var _rtv_label: String = String(_rtv_resolved.get(\"transition_text\", \"\"))"),
+        format!(
+            "{i1}{i1}var _rtv_label: String = String(_rtv_resolved.get(\"transition_text\", \"\"))"
+        ),
         format!("{i1}{i1}if _rtv_label != \"\":"),
         format!("{i1}{i1}{i1}scene = _rtv_label"),
-        format!("{i1}{i1}# Fall through to vanilla tail (FadeInLoading + label + change_scene_to_file)."),
+        format!(
+            "{i1}{i1}# Fall through to vanilla tail (FadeInLoading + label + change_scene_to_file)."
+        ),
     ]
 }
 
@@ -230,11 +232,11 @@ fn resolver_helper() -> String {
     let mut s = String::new();
     let _ = writeln!(s, "");
     let _ = writeln!(s, "# --- Crabby loader-registry helper ---");
-    let _ = writeln!(s, "func _rtv_resolve_scene_path(scene: String) -> Dictionary:");
     let _ = writeln!(
         s,
-        "\tif {OVERRIDE_SCENE_PATHS_VAR}.has(scene):",
+        "func _rtv_resolve_scene_path(scene: String) -> Dictionary:"
     );
+    let _ = writeln!(s, "\tif {OVERRIDE_SCENE_PATHS_VAR}.has(scene):",);
     let _ = writeln!(s, "\t\treturn {OVERRIDE_SCENE_PATHS_VAR}[scene]");
     let _ = writeln!(s, "\tif {MOD_SCENE_PATHS_VAR}.has(scene):");
     let _ = writeln!(s, "\t\treturn {MOD_SCENE_PATHS_VAR}[scene]");
@@ -263,30 +265,66 @@ fn bloader_compat_shim(indent: &str) -> String {
     let _ = writeln!(s, "func add_map(d: Dictionary) -> bool:");
     let _ = writeln!(s, "{i1}return _rtv_bloader_compat_register(d, false)");
     let _ = writeln!(s);
-    let _ = writeln!(s, "func _rtv_bloader_compat_register(d: Dictionary, default_shelter: bool) -> bool:");
+    let _ = writeln!(
+        s,
+        "func _rtv_bloader_compat_register(d: Dictionary, default_shelter: bool) -> bool:"
+    );
     let _ = writeln!(s, "{i1}if not (d is Dictionary):");
-    let _ = writeln!(s, "{i2}push_warning(\"[B_Loader compat] add_shelter/add_map expects a Dictionary\")");
+    let _ = writeln!(
+        s,
+        "{i2}push_warning(\"[B_Loader compat] add_shelter/add_map expects a Dictionary\")"
+    );
     let _ = writeln!(s, "{i2}return false");
     let _ = writeln!(s, "{i1}var id: String = String(d.get(\"map_name\", \"\"))");
     let _ = writeln!(s, "{i1}if id == \"\":");
-    let _ = writeln!(s, "{i2}push_warning(\"[B_Loader compat] dict is missing 'map_name'\")");
+    let _ = writeln!(
+        s,
+        "{i2}push_warning(\"[B_Loader compat] dict is missing 'map_name'\")"
+    );
     let _ = writeln!(s, "{i2}return false");
     let _ = writeln!(s, "{i1}if {MOD_SHELTERS_VAR}.has(id):");
-    let _ = writeln!(s, "{i2}push_warning(\"[B_Loader compat] '\" + id + \"' already registered\")");
+    let _ = writeln!(
+        s,
+        "{i2}push_warning(\"[B_Loader compat] '\" + id + \"' already registered\")"
+    );
     let _ = writeln!(s, "{i2}return false");
     let _ = writeln!(s, "{i1}if id in shelters:");
-    let _ = writeln!(s, "{i2}push_warning(\"[B_Loader compat] '\" + id + \"' already in vanilla shelters list\")");
+    let _ = writeln!(
+        s,
+        "{i2}push_warning(\"[B_Loader compat] '\" + id + \"' already in vanilla shelters list\")"
+    );
     let _ = writeln!(s, "{i2}return false");
-    let _ = writeln!(s, "{i1}var is_shelter: bool = bool(d.get(\"shelter\", default_shelter))");
+    let _ = writeln!(
+        s,
+        "{i1}var is_shelter: bool = bool(d.get(\"shelter\", default_shelter))"
+    );
     // B_Loader uses 'scene_path'; both are accepted.
-    let _ = writeln!(s, "{i1}var scene_path: String = String(d.get(\"path\", d.get(\"scene_path\", \"\")))");
+    let _ = writeln!(
+        s,
+        "{i1}var scene_path: String = String(d.get(\"path\", d.get(\"scene_path\", \"\")))"
+    );
     let _ = writeln!(s, "{i1}var entry: Dictionary = {{");
     let _ = writeln!(s, "{i2}\"shelter\": is_shelter,");
-    let _ = writeln!(s, "{i2}\"transition_text\": String(d.get(\"transition_text\", id)),");
-    let _ = writeln!(s, "{i2}\"exit_spawn\": String(d.get(\"exit_spawn\", \"\")),");
-    let _ = writeln!(s, "{i2}\"entrance_spawn\": String(d.get(\"entrance_spawn\", \"\")),");
-    let _ = writeln!(s, "{i2}\"connected_to\": String(d.get(\"connected_to\", \"\")),");
-    let _ = writeln!(s, "{i2}\"connected_content\": d.get(\"connected_content\", []),");
+    let _ = writeln!(
+        s,
+        "{i2}\"transition_text\": String(d.get(\"transition_text\", id)),"
+    );
+    let _ = writeln!(
+        s,
+        "{i2}\"exit_spawn\": String(d.get(\"exit_spawn\", \"\")),"
+    );
+    let _ = writeln!(
+        s,
+        "{i2}\"entrance_spawn\": String(d.get(\"entrance_spawn\", \"\")),"
+    );
+    let _ = writeln!(
+        s,
+        "{i2}\"connected_to\": String(d.get(\"connected_to\", \"\")),"
+    );
+    let _ = writeln!(
+        s,
+        "{i2}\"connected_content\": d.get(\"connected_content\", []),"
+    );
     let _ = writeln!(s, "{i1}}}");
     let _ = writeln!(s, "{i1}{MOD_SHELTERS_VAR}[id] = entry");
     let _ = writeln!(s, "{i1}shelters.append(id)");
@@ -298,10 +336,19 @@ fn bloader_compat_shim(indent: &str) -> String {
     let _ = writeln!(s, "{i3}\"transition_text\": entry[\"transition_text\"],");
     let _ = writeln!(s, "{i2}}}");
     let _ = writeln!(s, "{i2}if d.has(\"menu\"): sp[\"menu\"] = d[\"menu\"]");
-    let _ = writeln!(s, "{i2}if d.has(\"permadeath\"): sp[\"permadeath\"] = d[\"permadeath\"]");
-    let _ = writeln!(s, "{i2}if d.has(\"tutorial\"): sp[\"tutorial\"] = d[\"tutorial\"]");
+    let _ = writeln!(
+        s,
+        "{i2}if d.has(\"permadeath\"): sp[\"permadeath\"] = d[\"permadeath\"]"
+    );
+    let _ = writeln!(
+        s,
+        "{i2}if d.has(\"tutorial\"): sp[\"tutorial\"] = d[\"tutorial\"]"
+    );
     let _ = writeln!(s, "{i2}{MOD_SCENE_PATHS_VAR}[id] = sp");
-    let _ = writeln!(s, "{i1}print(\"[B_Loader compat] registered '\" + id + \"' (shelter=\" + str(is_shelter) + \", connected_to='\" + entry[\"connected_to\"] + \"')\")");
+    let _ = writeln!(
+        s,
+        "{i1}print(\"[B_Loader compat] registered '\" + id + \"' (shelter=\" + str(is_shelter) + \", connected_to='\" + entry[\"connected_to\"] + \"')\")"
+    );
     let _ = writeln!(s, "{i1}return true");
     s
 }
@@ -331,7 +378,13 @@ fn rewrite_save_paths(source: &str) -> String {
     // Order matters: rewrite the longer/more-specific patterns first so
     // a generic `"user://" + ...` rewrite can't eat a literal that needs
     // individual handling.
-    for slot_file in ["Character.tres", "World.tres", "Traders.tres", "Cabin.tres", "Tent.tres"] {
+    for slot_file in [
+        "Character.tres",
+        "World.tres",
+        "Traders.tres",
+        "Cabin.tres",
+        "Tent.tres",
+    ] {
         let from = format!("\"user://{slot_file}\"");
         let to = format!("_rtv_save_path(\"{slot_file}\")");
         s = s.replace(&from, &to);
@@ -384,7 +437,10 @@ fn save_slot_helpers(indent: &str) -> String {
     // Slot dirs live under saves/<profile>/<slot>/ so per-profile slots
     // can share names without colliding.
     let _ = writeln!(s, "func _rtv_save_dir() -> String:");
-    let _ = writeln!(s, "{i1}return \"user://saves/\" + _rtv_save_profile + \"/\" + _rtv_save_slot + \"/\"");
+    let _ = writeln!(
+        s,
+        "{i1}return \"user://saves/\" + _rtv_save_profile + \"/\" + _rtv_save_slot + \"/\""
+    );
     let _ = writeln!(s);
     let _ = writeln!(s, "func _rtv_save_path(name: String) -> String:");
     let _ = writeln!(s, "{i1}return _rtv_save_dir() + name");
@@ -400,13 +456,25 @@ fn save_slot_helpers(indent: &str) -> String {
     let _ = writeln!(s, "func active_profile() -> String:");
     let _ = writeln!(s, "{i1}return _rtv_save_profile");
     let _ = writeln!(s);
-    let _ = writeln!(s, "## Public: absolute save-dir path for the active (profile, slot)");
-    let _ = writeln!(s, "## pair, with trailing slash (e.g. `user://saves/default/default/`).");
+    let _ = writeln!(
+        s,
+        "## Public: absolute save-dir path for the active (profile, slot)"
+    );
+    let _ = writeln!(
+        s,
+        "## pair, with trailing slash (e.g. `user://saves/default/default/`)."
+    );
     let _ = writeln!(s, "func save_dir() -> String:");
     let _ = writeln!(s, "{i1}return _rtv_save_dir()");
     let _ = writeln!(s);
-    let _ = writeln!(s, "## Public: resolve a per-slot file path. Mods MUST go through");
-    let _ = writeln!(s, "## this for any state that should snapshot/swap with the slot.");
+    let _ = writeln!(
+        s,
+        "## Public: resolve a per-slot file path. Mods MUST go through"
+    );
+    let _ = writeln!(
+        s,
+        "## this for any state that should snapshot/swap with the slot."
+    );
     let _ = writeln!(s, "func save_path(name: String) -> String:");
     let _ = writeln!(s, "{i1}return _rtv_save_path(name)");
     let _ = writeln!(s);
@@ -415,8 +483,14 @@ fn save_slot_helpers(indent: &str) -> String {
     let _ = writeln!(s, "func _rtv_init_save_slot() -> void:");
     let _ = writeln!(s, "{i1}var profile: String = \"default\"");
     let _ = writeln!(s, "{i1}var slot: String = \"default\"");
-    let _ = writeln!(s, "{i1}if FileAccess.file_exists(\"user://active_slot.txt\"):");
-    let _ = writeln!(s, "{i2}var f := FileAccess.open(\"user://active_slot.txt\", FileAccess.READ)");
+    let _ = writeln!(
+        s,
+        "{i1}if FileAccess.file_exists(\"user://active_slot.txt\"):"
+    );
+    let _ = writeln!(
+        s,
+        "{i2}var f := FileAccess.open(\"user://active_slot.txt\", FileAccess.READ)"
+    );
     let _ = writeln!(s, "{i2}if f != null:");
     let _ = writeln!(s, "{i3}var raw := f.get_as_text()");
     let _ = writeln!(s, "{i3}f.close()");
@@ -428,9 +502,15 @@ fn save_slot_helpers(indent: &str) -> String {
     let _ = writeln!(s, "{i3}{i1}if eq_at < 0:");
     let _ = writeln!(s, "{i3}{i2}continue");
     let _ = writeln!(s, "{i3}{i1}var key := line.substr(0, eq_at).strip_edges()");
-    let _ = writeln!(s, "{i3}{i1}var value := line.substr(eq_at + 1).strip_edges()");
+    let _ = writeln!(
+        s,
+        "{i3}{i1}var value := line.substr(eq_at + 1).strip_edges()"
+    );
     let _ = writeln!(s, "{i3}{i1}if not _rtv_is_safe_slot_name(value):");
-    let _ = writeln!(s, "{i3}{i2}push_warning(\"[crabby] active_slot.txt: ignoring unsafe \" + key + \"='\" + value + \"'\")");
+    let _ = writeln!(
+        s,
+        "{i3}{i2}push_warning(\"[crabby] active_slot.txt: ignoring unsafe \" + key + \"='\" + value + \"'\")"
+    );
     let _ = writeln!(s, "{i3}{i2}continue");
     let _ = writeln!(s, "{i3}{i1}if key == \"profile\":");
     let _ = writeln!(s, "{i3}{i2}profile = value");
@@ -451,23 +531,41 @@ fn save_slot_helpers(indent: &str) -> String {
     // claiming them under whatever slot happens to be active).
     let _ = writeln!(s, "{i1}_rtv_migrate_flat_slot_dirs()");
     let _ = writeln!(s);
-    let _ = writeln!(s, "{i1}# Ensure the slot dir exists. make_dir_recursive is no-op");
-    let _ = writeln!(s, "{i1}# when the path already exists, safe to run every boot.");
+    let _ = writeln!(
+        s,
+        "{i1}# Ensure the slot dir exists. make_dir_recursive is no-op"
+    );
+    let _ = writeln!(
+        s,
+        "{i1}# when the path already exists, safe to run every boot."
+    );
     let _ = writeln!(s, "{i1}var dir := DirAccess.open(\"user://\")");
     let _ = writeln!(s, "{i1}if dir != null:");
-    let _ = writeln!(s, "{i2}dir.make_dir_recursive(\"saves/\" + _rtv_save_profile + \"/\" + _rtv_save_slot)");
+    let _ = writeln!(
+        s,
+        "{i2}dir.make_dir_recursive(\"saves/\" + _rtv_save_profile + \"/\" + _rtv_save_slot)"
+    );
     let _ = writeln!(s);
-    let _ = writeln!(s, "{i1}print(\"[crabby] active save: \" + _rtv_save_profile + \"/\" + _rtv_save_slot)");
+    let _ = writeln!(
+        s,
+        "{i1}print(\"[crabby] active save: \" + _rtv_save_profile + \"/\" + _rtv_save_slot)"
+    );
     let _ = writeln!(s);
 
     // Name safety: applied to both profile and slot, same rules.
     let _ = writeln!(s, "func _rtv_is_safe_slot_name(name: String) -> bool:");
     let _ = writeln!(s, "{i1}if name.is_empty() or name.length() > 64:");
     let _ = writeln!(s, "{i2}return false");
-    let _ = writeln!(s, "{i1}if name.contains(\"/\") or name.contains(\"\\\\\") or name.contains(\"..\"):");
+    let _ = writeln!(
+        s,
+        "{i1}if name.contains(\"/\") or name.contains(\"\\\\\") or name.contains(\"..\"):"
+    );
     let _ = writeln!(s, "{i2}return false");
     let _ = writeln!(s, "{i1}for c in name:");
-    let _ = writeln!(s, "{i2}var ok := (c >= \"a\" and c <= \"z\") or (c >= \"A\" and c <= \"Z\") or (c >= \"0\" and c <= \"9\") or c == \"-\" or c == \"_\" or c == \" \"");
+    let _ = writeln!(
+        s,
+        "{i2}var ok := (c >= \"a\" and c <= \"z\") or (c >= \"A\" and c <= \"Z\") or (c >= \"0\" and c <= \"9\") or c == \"-\" or c == \"_\" or c == \" \""
+    );
     let _ = writeln!(s, "{i2}if not ok:");
     let _ = writeln!(s, "{i3}return false");
     let _ = writeln!(s, "{i1}return true");
@@ -481,26 +579,47 @@ fn save_slot_helpers(indent: &str) -> String {
     let _ = writeln!(s, "{i1}var saves_d := DirAccess.open(\"user://saves\")");
     let _ = writeln!(s, "{i1}if saves_d == null:");
     let _ = writeln!(s, "{i2}return");
-    let _ = writeln!(s, "{i1}# Snapshot dir entries first; the walk mutates them.");
+    let _ = writeln!(
+        s,
+        "{i1}# Snapshot dir entries first; the walk mutates them."
+    );
     let _ = writeln!(s, "{i1}saves_d.list_dir_begin()");
     let _ = writeln!(s, "{i1}var entries: Array[String] = []");
     let _ = writeln!(s, "{i1}var name := saves_d.get_next()");
     let _ = writeln!(s, "{i1}while name != \"\":");
-    let _ = writeln!(s, "{i2}if saves_d.current_is_dir() and not name.begins_with(\".\"):");
+    let _ = writeln!(
+        s,
+        "{i2}if saves_d.current_is_dir() and not name.begins_with(\".\"):"
+    );
     let _ = writeln!(s, "{i3}entries.append(name)");
     let _ = writeln!(s, "{i2}name = saves_d.get_next()");
     let _ = writeln!(s, "{i1}saves_d.list_dir_end()");
     let _ = writeln!(s);
-    let _ = writeln!(s, "{i1}# A flat-layout dir is one whose immediate children are the");
-    let _ = writeln!(s, "{i1}# slot's save files (e.g. Character.tres). A profile dir's");
-    let _ = writeln!(s, "{i1}# immediate children are slot subdirs. Use the file-vs-dir");
-    let _ = writeln!(s, "{i1}# heuristic on each entry's first .tres / first child.");
+    let _ = writeln!(
+        s,
+        "{i1}# A flat-layout dir is one whose immediate children are the"
+    );
+    let _ = writeln!(
+        s,
+        "{i1}# slot's save files (e.g. Character.tres). A profile dir's"
+    );
+    let _ = writeln!(
+        s,
+        "{i1}# immediate children are slot subdirs. Use the file-vs-dir"
+    );
+    let _ = writeln!(
+        s,
+        "{i1}# heuristic on each entry's first .tres / first child."
+    );
     let _ = writeln!(s, "{i1}for entry in entries:");
     let _ = writeln!(s, "{i2}if not _rtv_is_safe_slot_name(entry):");
     let _ = writeln!(s, "{i3}continue");
     let _ = writeln!(s, "{i2}if entry == _rtv_save_profile:");
     let _ = writeln!(s, "{i3}continue  # already a profile dir");
-    let _ = writeln!(s, "{i2}var sub := DirAccess.open(\"user://saves/\" + entry)");
+    let _ = writeln!(
+        s,
+        "{i2}var sub := DirAccess.open(\"user://saves/\" + entry)"
+    );
     let _ = writeln!(s, "{i2}if sub == null:");
     let _ = writeln!(s, "{i3}continue");
     let _ = writeln!(s, "{i2}sub.list_dir_begin()");
@@ -515,34 +634,76 @@ fn save_slot_helpers(indent: &str) -> String {
     let _ = writeln!(s, "{i2}if not has_tres:");
     let _ = writeln!(s, "{i3}continue  # likely a profile dir, not a flat slot");
     let _ = writeln!(s);
-    let _ = writeln!(s, "{i2}var dst_parent := \"user://saves/\" + _rtv_save_profile");
+    let _ = writeln!(
+        s,
+        "{i2}var dst_parent := \"user://saves/\" + _rtv_save_profile"
+    );
     let _ = writeln!(s, "{i2}saves_d.make_dir_recursive(_rtv_save_profile)");
     let _ = writeln!(s, "{i2}var dst := dst_parent + \"/\" + entry");
     let _ = writeln!(s);
-    let _ = writeln!(s, "{i2}# Conflict policy: a *populated* dst is a real slot we mustn't");
-    let _ = writeln!(s, "{i2}# overwrite. An *empty* dst is a stub (e.g. make_dir_recursive");
-    let _ = writeln!(s, "{i2}# pre-created it for the active slot), safe to merge into.");
+    let _ = writeln!(
+        s,
+        "{i2}# Conflict policy: a *populated* dst is a real slot we mustn't"
+    );
+    let _ = writeln!(
+        s,
+        "{i2}# overwrite. An *empty* dst is a stub (e.g. make_dir_recursive"
+    );
+    let _ = writeln!(
+        s,
+        "{i2}# pre-created it for the active slot), safe to merge into."
+    );
     let _ = writeln!(s, "{i2}var dst_has_tres := _rtv_dir_has_tres(dst)");
     let _ = writeln!(s, "{i2}if dst_has_tres:");
-    let _ = writeln!(s, "{i3}push_warning(\"[crabby] flat-slot migrate: '\" + dst + \"' already populated; leaving '\" + entry + \"' in place\")");
+    let _ = writeln!(
+        s,
+        "{i3}push_warning(\"[crabby] flat-slot migrate: '\" + dst + \"' already populated; leaving '\" + entry + \"' in place\")"
+    );
     let _ = writeln!(s, "{i3}continue");
     let _ = writeln!(s);
-    let _ = writeln!(s, "{i2}# If dst exists but is empty, copy files in then remove the");
-    let _ = writeln!(s, "{i2}# source. (rename() refuses to overwrite an existing dir.)");
+    let _ = writeln!(
+        s,
+        "{i2}# If dst exists but is empty, copy files in then remove the"
+    );
+    let _ = writeln!(
+        s,
+        "{i2}# source. (rename() refuses to overwrite an existing dir.)"
+    );
     let _ = writeln!(s, "{i2}if DirAccess.dir_exists_absolute(dst):");
-    let _ = writeln!(s, "{i3}var moved := _rtv_move_dir_contents(\"user://saves/\" + entry, dst)");
+    let _ = writeln!(
+        s,
+        "{i3}var moved := _rtv_move_dir_contents(\"user://saves/\" + entry, dst)"
+    );
     let _ = writeln!(s, "{i3}if moved >= 0:");
-    let _ = writeln!(s, "{i3}{i1}DirAccess.remove_absolute(\"user://saves/\" + entry)");
-    let _ = writeln!(s, "{i3}{i1}print(\"[crabby] flat-slot migrate: merged \" + str(moved) + \" file(s) from '\" + entry + \"' into '\" + _rtv_save_profile + \"/\" + entry + \"'\")");
+    let _ = writeln!(
+        s,
+        "{i3}{i1}DirAccess.remove_absolute(\"user://saves/\" + entry)"
+    );
+    let _ = writeln!(
+        s,
+        "{i3}{i1}print(\"[crabby] flat-slot migrate: merged \" + str(moved) + \" file(s) from '\" + entry + \"' into '\" + _rtv_save_profile + \"/\" + entry + \"'\")"
+    );
     let _ = writeln!(s, "{i3}else:");
-    let _ = writeln!(s, "{i3}{i1}push_warning(\"[crabby] flat-slot migrate: merge failed for '\" + entry + \"'\")");
+    let _ = writeln!(
+        s,
+        "{i3}{i1}push_warning(\"[crabby] flat-slot migrate: merge failed for '\" + entry + \"'\")"
+    );
     let _ = writeln!(s, "{i3}continue");
     let _ = writeln!(s);
     let _ = writeln!(s, "{i2}# Dst doesn't exist, straight rename.");
-    let _ = writeln!(s, "{i2}if saves_d.rename(entry, _rtv_save_profile + \"/\" + entry) == OK:");
-    let _ = writeln!(s, "{i3}print(\"[crabby] flat-slot migrate: '\" + entry + \"' -> '\" + _rtv_save_profile + \"/\" + entry + \"'\")");
+    let _ = writeln!(
+        s,
+        "{i2}if saves_d.rename(entry, _rtv_save_profile + \"/\" + entry) == OK:"
+    );
+    let _ = writeln!(
+        s,
+        "{i3}print(\"[crabby] flat-slot migrate: '\" + entry + \"' -> '\" + _rtv_save_profile + \"/\" + entry + \"'\")"
+    );
     let _ = writeln!(s, "{i2}else:");
-    let _ = writeln!(s, "{i3}push_warning(\"[crabby] flat-slot migrate: rename failed for '\" + entry + \"'\")");
+    let _ = writeln!(
+        s,
+        "{i3}push_warning(\"[crabby] flat-slot migrate: rename failed for '\" + entry + \"'\")"
+    );
     let _ = writeln!(s);
 
     // Helper used by the merge path.
@@ -560,11 +721,26 @@ fn save_slot_helpers(indent: &str) -> String {
     let _ = writeln!(s, "{i1}d.list_dir_end()");
     let _ = writeln!(s, "{i1}return false");
     let _ = writeln!(s);
-    let _ = writeln!(s, "## Move every loose file from `src_dir` into `dst_dir`. Returns");
-    let _ = writeln!(s, "## the count moved, or -1 on error. Skips subdirs (slot dirs");
-    let _ = writeln!(s, "## are flat anyway) and the .snapshots subdir. The caller is");
-    let _ = writeln!(s, "## responsible for removing src_dir after this returns >= 0.");
-    let _ = writeln!(s, "func _rtv_move_dir_contents(src_dir: String, dst_dir: String) -> int:");
+    let _ = writeln!(
+        s,
+        "## Move every loose file from `src_dir` into `dst_dir`. Returns"
+    );
+    let _ = writeln!(
+        s,
+        "## the count moved, or -1 on error. Skips subdirs (slot dirs"
+    );
+    let _ = writeln!(
+        s,
+        "## are flat anyway) and the .snapshots subdir. The caller is"
+    );
+    let _ = writeln!(
+        s,
+        "## responsible for removing src_dir after this returns >= 0."
+    );
+    let _ = writeln!(
+        s,
+        "func _rtv_move_dir_contents(src_dir: String, dst_dir: String) -> int:"
+    );
     let _ = writeln!(s, "{i1}var sd := DirAccess.open(src_dir)");
     let _ = writeln!(s, "{i1}if sd == null:");
     let _ = writeln!(s, "{i2}return -1");
@@ -578,7 +754,10 @@ fn save_slot_helpers(indent: &str) -> String {
     let _ = writeln!(s, "{i3}if sd.rename_absolute(src, dst) == OK:");
     let _ = writeln!(s, "{i3}{i1}moved += 1");
     let _ = writeln!(s, "{i3}else:");
-    let _ = writeln!(s, "{i3}{i1}push_warning(\"[crabby] move_dir_contents: failed \" + src + \" -> \" + dst)");
+    let _ = writeln!(
+        s,
+        "{i3}{i1}push_warning(\"[crabby] move_dir_contents: failed \" + src + \" -> \" + dst)"
+    );
     let _ = writeln!(s, "{i2}n = sd.get_next()");
     let _ = writeln!(s, "{i1}sd.list_dir_end()");
     let _ = writeln!(s, "{i1}return moved");
@@ -657,8 +836,14 @@ mod tests {
     fn appends_resolver_helper() {
         let src = "extends CanvasLayer\n\nfunc LoadScene(scene: String):\n\tpass\n";
         let out = transform("Loader.gd", src, "\t");
-        assert!(out.contains("func _rtv_resolve_scene_path(scene: String)"), "{out}");
-        assert!(out.contains("return _rtv_override_scene_paths[scene]"), "{out}");
+        assert!(
+            out.contains("func _rtv_resolve_scene_path(scene: String)"),
+            "{out}"
+        );
+        assert!(
+            out.contains("return _rtv_override_scene_paths[scene]"),
+            "{out}"
+        );
     }
 
     #[test]
@@ -694,9 +879,15 @@ mod tests {
         let out = transform("Loader.gd", src, "\t");
         for f in ["Character", "World", "Cabin", "Tent", "Traders"] {
             let needle = format!("_rtv_save_path(\"{f}.tres\")");
-            assert!(out.contains(&needle), "expected `{needle}` in output:\n{out}");
+            assert!(
+                out.contains(&needle),
+                "expected `{needle}` in output:\n{out}"
+            );
             let stale = format!("\"user://{f}.tres\"");
-            assert!(!out.contains(&stale), "stale path `{stale}` should be gone:\n{out}");
+            assert!(
+                !out.contains(&stale),
+                "stale path `{stale}` should be gone:\n{out}"
+            );
         }
     }
 
@@ -706,8 +897,14 @@ mod tests {
         // shared across save slots.
         let src = "extends CanvasLayer\nfunc CreateValidator():\n\tResourceSaver.save(v, \"user://Validator.tres\")\n\tResourceSaver.save(p, \"user://Preferences.tres\")\n";
         let out = transform("Loader.gd", src, "\t");
-        assert!(out.contains("\"user://Validator.tres\""), "Validator must stay global:\n{out}");
-        assert!(out.contains("\"user://Preferences.tres\""), "Preferences must stay global:\n{out}");
+        assert!(
+            out.contains("\"user://Validator.tres\""),
+            "Validator must stay global:\n{out}"
+        );
+        assert!(
+            out.contains("\"user://Preferences.tres\""),
+            "Preferences must stay global:\n{out}"
+        );
     }
 
     #[test]
@@ -740,12 +937,15 @@ mod tests {
 
     #[test]
     fn injects_init_call_into_ready() {
-        let src = "extends CanvasLayer\nfunc _ready():\n\tmasterAmplify.volume_db = linear_to_db(0)\n";
+        let src =
+            "extends CanvasLayer\nfunc _ready():\n\tmasterAmplify.volume_db = linear_to_db(0)\n";
         let out = transform("Loader.gd", src, "\t");
         // The init call must land BEFORE the existing _ready body so
         // _rtv_save_slot is populated by the time anything else needs
         // a save path.
-        let init_pos = out.find("_rtv_init_save_slot()").expect("init call present");
+        let init_pos = out
+            .find("_rtv_init_save_slot()")
+            .expect("init call present");
         let body_pos = out.find("masterAmplify.volume_db").expect("body present");
         assert!(
             init_pos < body_pos,
@@ -807,7 +1007,10 @@ mod tests {
             "func save_dir() -> String:",
             "func save_path(name: String) -> String:",
         ] {
-            assert!(out.contains(needle), "missing public API `{needle}`:\n{out}");
+            assert!(
+                out.contains(needle),
+                "missing public API `{needle}`:\n{out}"
+            );
         }
     }
 }

@@ -116,7 +116,9 @@ impl MwCatalog {
     /// client if they don't have one yet.
     #[must_use]
     pub fn new(client: Client) -> Self {
-        Self { client: Arc::new(client) }
+        Self {
+            client: Arc::new(client),
+        }
     }
 
     /// Convenience accessor: needed by the launcher when doing

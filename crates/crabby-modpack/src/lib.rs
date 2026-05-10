@@ -194,8 +194,8 @@ pub fn decode_file_bytes(bytes: &[u8]) -> Result<Manifest, ModpackError> {
         });
     }
     let compressed = &bytes[nl + 1..];
-    let json = zstd::stream::decode_all(compressed)
-        .map_err(|e| ModpackError::Zstd(e.to_string()))?;
+    let json =
+        zstd::stream::decode_all(compressed).map_err(|e| ModpackError::Zstd(e.to_string()))?;
     let m: Manifest = serde_json::from_slice(&json)?;
     Ok(m)
 }
@@ -269,7 +269,10 @@ mod tests {
         let bytes = encode_file_bytes(&m).unwrap();
         assert!(bytes.starts_with(FILE_HEADER.as_bytes()));
         let back = decode_file_bytes(&bytes).unwrap();
-        assert_eq!(back.mods[0].mcm_config.as_deref(), Some(&b"[main]\nbinding=\"shift\"\n"[..]));
+        assert_eq!(
+            back.mods[0].mcm_config.as_deref(),
+            Some(&b"[main]\nbinding=\"shift\"\n"[..])
+        );
     }
 
     #[test]
@@ -297,6 +300,9 @@ mod tests {
         // decode; decoder rejects because schema != SCHEMA_VERSION.
         let s = encode_string(&m).unwrap();
         let err = decode_string(&s).unwrap_err();
-        assert!(matches!(err, ModpackError::UnsupportedSchema { .. }), "{err:?}");
+        assert!(
+            matches!(err, ModpackError::UnsupportedSchema { .. }),
+            "{err:?}"
+        );
     }
 }

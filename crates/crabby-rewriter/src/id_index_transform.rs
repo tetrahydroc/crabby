@@ -222,7 +222,10 @@ mod tests {
         assert!(out.contains("func _rebuild_id_index() -> void:"), "{out}");
         assert!(out.contains("for r in events:"), "{out}");
         assert!(out.contains("_id_index[id] = r"), "{out}");
-        assert!(out.contains("func _index_add(id: String, entry: EventData)"), "{out}");
+        assert!(
+            out.contains("func _index_add(id: String, entry: EventData)"),
+            "{out}"
+        );
         assert!(out.contains("func _index_remove(id: String)"), "{out}");
     }
 
@@ -238,7 +241,10 @@ mod tests {
         };
         let src = "extends Resource\nclass_name Recipes\n@export var consumables: Array[RecipeData]\n@export var weapons: Array[RecipeData]\n";
         let out = transform(src, &cfg);
-        assert!(out.contains(r#"for cat in ["consumables", "weapons"]:"#), "{out}");
+        assert!(
+            out.contains(r#"for cat in ["consumables", "weapons"]:"#),
+            "{out}"
+        );
         assert!(out.contains("var arr: Variant = get(cat)"), "{out}");
         assert!(
             out.contains(r#"_id_index[id] = {"recipe": r, "category": cat}"#),

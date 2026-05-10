@@ -126,9 +126,12 @@ pub fn button_style_with(
     move |_theme, status| {
         let (base_bg, hover_bg, border, text_color) = match kind {
             ButtonKind::Default => (palette.bg_3, palette.bg_4, palette.line, palette.fg_0),
-            ButtonKind::Primary => {
-                (palette.accent, lighten(palette.accent, 0.06), palette.accent_edge, palette.accent_ink)
-            }
+            ButtonKind::Primary => (
+                palette.accent,
+                lighten(palette.accent, 0.06),
+                palette.accent_edge,
+                palette.accent_ink,
+            ),
             ButtonKind::Ghost => (
                 Color::TRANSPARENT,
                 palette.bg_3,
@@ -271,36 +274,53 @@ fn lighten(c: Color, amount: f32) -> Color {
 /// Render a status pill - `[ • Healthy ]`-style chip with a colored dot.
 /// Mirrors the design's `.pill` class with tone variants.
 pub fn pill<'a, Msg: 'a>(palette: Palette, label: &'a str, tone: PillTone) -> Element<'a, Msg> {
-    use iced::widget::{container, row, text};
     use iced::Alignment;
+    use iced::widget::{container, row, text};
     let (bg, fg, border) = match tone {
         PillTone::Neutral => (palette.bg_3, palette.fg_1, palette.line_soft),
         PillTone::Accent => (palette.accent_soft, palette.accent, palette.accent_edge),
-        PillTone::Ok => (with_alpha(palette.ok, 0.14), palette.ok, with_alpha(palette.ok, 0.4)),
-        PillTone::Warn => (with_alpha(palette.warn, 0.14), palette.warn, with_alpha(palette.warn, 0.4)),
-        PillTone::Err => (with_alpha(palette.err, 0.14), palette.err, with_alpha(palette.err, 0.4)),
+        PillTone::Ok => (
+            with_alpha(palette.ok, 0.14),
+            palette.ok,
+            with_alpha(palette.ok, 0.4),
+        ),
+        PillTone::Warn => (
+            with_alpha(palette.warn, 0.14),
+            palette.warn,
+            with_alpha(palette.warn, 0.4),
+        ),
+        PillTone::Err => (
+            with_alpha(palette.err, 0.14),
+            palette.err,
+            with_alpha(palette.err, 0.4),
+        ),
     };
     let dot = container(text(""))
         .width(Length::Fixed(6.0))
         .height(Length::Fixed(6.0))
         .style(move |_t| container::Style {
             background: Some(Background::Color(fg)),
-            border: Border { color: fg, width: 0.0, radius: 999.0.into() },
+            border: Border {
+                color: fg,
+                width: 0.0,
+                radius: 999.0.into(),
+            },
             ..Default::default()
         });
     container(
-        row![
-            dot,
-            text(label.to_string()).size(11).color(fg),
-        ]
-        .spacing(6)
-        .align_y(Alignment::Center),
+        row![dot, text(label.to_string()).size(11).color(fg),]
+            .spacing(6)
+            .align_y(Alignment::Center),
     )
     .padding([2, 8])
     .style(move |_t| container::Style {
         background: Some(Background::Color(bg)),
         text_color: Some(fg),
-        border: Border { color: border, width: 1.0, radius: 999.0.into() },
+        border: Border {
+            color: border,
+            width: 1.0,
+            radius: 999.0.into(),
+        },
         ..Default::default()
     })
     .into()
@@ -343,7 +363,11 @@ pub fn thumb<'a, Msg: 'a>(palette: Palette, label: &'a str, w: f32, h: f32) -> E
         .padding(8)
         .style(move |_t| container::Style {
             background: Some(Background::Color(palette.bg_3)),
-            border: Border { color: palette.line_soft, width: 1.0, radius: 5.0.into() },
+            border: Border {
+                color: palette.line_soft,
+                width: 1.0,
+                radius: 5.0.into(),
+            },
             ..Default::default()
         })
         .into()
@@ -373,7 +397,11 @@ pub fn filter_chip_style(
         button::Style {
             background: Some(Background::Color(bg)),
             text_color,
-            border: Border { color: border, width: 1.0, radius: 999.0.into() },
+            border: Border {
+                color: border,
+                width: 1.0,
+                radius: 999.0.into(),
+            },
             ..Default::default()
         }
     }

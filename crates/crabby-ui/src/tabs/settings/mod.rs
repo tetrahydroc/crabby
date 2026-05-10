@@ -120,7 +120,11 @@ impl State {
                 .padding([8, 14])
                 .style(button_style(
                     p,
-                    if active { ButtonKind::Primary } else { ButtonKind::Ghost },
+                    if active {
+                        ButtonKind::Primary
+                    } else {
+                        ButtonKind::Ghost
+                    },
                 ))
                 .width(Length::Fill)
                 .on_press(Message::SelectSection(s))

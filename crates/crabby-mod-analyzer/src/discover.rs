@@ -35,7 +35,9 @@ fn read_folder(root: &Path) -> Vec<(String, String)> {
 }
 
 fn walk_folder(root: &Path, dir: &Path, out: &mut Vec<(String, String)>) {
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in rd.flatten() {
         let path = entry.path();
         // Skip dot-dirs (`.git` checkouts, etc).
@@ -65,8 +67,7 @@ fn walk_folder(root: &Path, dir: &Path, out: &mut Vec<(String, String)>) {
 }
 
 fn read_archive(path: &Path) -> Result<Vec<(String, String)>> {
-    let f = std::fs::File::open(path)
-        .map_err(|s| CrabbyError::io_at(path.to_path_buf(), s))?;
+    let f = std::fs::File::open(path).map_err(|s| CrabbyError::io_at(path.to_path_buf(), s))?;
     let mut z = zip::ZipArchive::new(f).map_err(|e| CrabbyError::Bake {
         context: format!("read mod archive {}", path.display()),
         source: format!("zip: {e}").into(),

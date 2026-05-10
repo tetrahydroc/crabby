@@ -47,8 +47,18 @@ fn eyebrow<'a>(label: &'a str, p: Palette) -> Element<'a, ThemeChange> {
 
 fn section_mode<'a>(theme: &'a CrabbyTheme, p: Palette) -> Element<'a, ThemeChange> {
     let segmented = row![
-        seg_button("Dark", theme.mode == Mode::Dark, p, ThemeChange::Mode(Mode::Dark)),
-        seg_button("Light", theme.mode == Mode::Light, p, ThemeChange::Mode(Mode::Light)),
+        seg_button(
+            "Dark",
+            theme.mode == Mode::Dark,
+            p,
+            ThemeChange::Mode(Mode::Dark)
+        ),
+        seg_button(
+            "Light",
+            theme.mode == Mode::Light,
+            p,
+            ThemeChange::Mode(Mode::Light)
+        ),
     ]
     .spacing(6);
     column![eyebrow("MODE", p), segmented].spacing(8).into()
@@ -68,7 +78,9 @@ fn section_pills<'a>(
         ("err", "Error / Conflicts", Oklch(0.66, 0.17, 25.0)),
     ]
     .into_iter()
-    .map(|(key, label, default_color)| pill_row(key, label, default_color, saved_colors, overrides, p))
+    .map(|(key, label, default_color)| {
+        pill_row(key, label, default_color, saved_colors, overrides, p)
+    })
     .collect();
 
     column![
@@ -97,12 +109,17 @@ fn pill_row<'a>(
     let is_overridden = overrides.contains_key(key);
 
     let swatch = swatch_box(current, 28.0, true, p);
-    let label_w = text(label.to_string()).size(12).color(p.fg_0).width(Length::Fixed(160.0));
+    let label_w = text(label.to_string())
+        .size(12)
+        .color(p.fg_0)
+        .width(Length::Fixed(160.0));
     let reset_btn: Element<'a, ThemeChange> = if is_overridden {
         button(text("Reset").size(11))
             .padding([3, 10])
             .style(button_style(p, ButtonKind::Ghost))
-            .on_press(ThemeChange::ClearPillOverride { tone_key: key.into() })
+            .on_press(ThemeChange::ClearPillOverride {
+                tone_key: key.into(),
+            })
             .into()
     } else {
         text("Default").size(11).color(p.fg_3).into()
@@ -135,7 +152,11 @@ fn pill_row<'a>(
     .style(move |_t| iced::widget::container::Style {
         background: Some(iced::Background::Color(p.bg_3)),
         text_color: Some(p.fg_0),
-        border: iced::Border { color: p.line_soft, width: 1.0, radius: 6.0.into() },
+        border: iced::Border {
+            color: p.line_soft,
+            width: 1.0,
+            radius: 6.0.into(),
+        },
         ..Default::default()
     })
     .width(Length::Fill)
@@ -151,10 +172,17 @@ fn pick_swatch<'a>(key: &'static str, lch: [f32; 3], p: Palette) -> Element<'a, 
         .style(move |_t, _s| iced::widget::button::Style {
             background: Some(iced::Background::Color(oklch.color())),
             text_color: p.fg_0,
-            border: iced::Border { color: p.line, width: 1.0, radius: 999.0.into() },
+            border: iced::Border {
+                color: p.line,
+                width: 1.0,
+                radius: 999.0.into(),
+            },
             ..Default::default()
         })
-        .on_press(ThemeChange::SetPillOverride { tone_key: key.into(), lch })
+        .on_press(ThemeChange::SetPillOverride {
+            tone_key: key.into(),
+            lch,
+        })
         .into()
 }
 
@@ -182,8 +210,18 @@ fn section_accent<'a>(
 
     let sliders = column![
         labeled_slider("Hue", &format!("{:.0}°", theme.accent_hue), hue_slider, p),
-        labeled_slider("Chroma", &format!("{:.3}", theme.accent_c), chroma_slider, p),
-        labeled_slider("Lightness", &format!("{:.2}", theme.accent_l), lightness_slider, p),
+        labeled_slider(
+            "Chroma",
+            &format!("{:.3}", theme.accent_c),
+            chroma_slider,
+            p
+        ),
+        labeled_slider(
+            "Lightness",
+            &format!("{:.2}", theme.accent_l),
+            lightness_slider,
+            p
+        ),
     ]
     .spacing(10)
     .width(Length::Fill);
@@ -208,14 +246,9 @@ fn section_accent<'a>(
 
     let saved_row = saved_colors_row(saved_colors, p);
 
-    column![
-        eyebrow("ACCENT", p),
-        picker_row,
-        saved_header,
-        saved_row,
-    ]
-    .spacing(10)
-    .into()
+    column![eyebrow("ACCENT", p), picker_row, saved_header, saved_row,]
+        .spacing(10)
+        .into()
 }
 
 fn section_bg_tint<'a>(theme: &'a CrabbyTheme, p: Palette) -> Element<'a, ThemeChange> {
@@ -223,21 +256,36 @@ fn section_bg_tint<'a>(theme: &'a CrabbyTheme, p: Palette) -> Element<'a, ThemeC
         .step(1.0)
         .width(Length::Fill);
     let preset_buttons = row![
-        seg_button("Cool 240°", (theme.bg_tint_hue - 240.0).abs() < 1.0, p, ThemeChange::BgTintHue(240.0)),
-        seg_button("Slate 270°", (theme.bg_tint_hue - 270.0).abs() < 1.0, p, ThemeChange::BgTintHue(270.0)),
-        seg_button("Neutral 0°", theme.bg_tint_hue.abs() < 1.0, p, ThemeChange::BgTintHue(0.0)),
-        seg_button("Warm 60°", (theme.bg_tint_hue - 60.0).abs() < 1.0, p, ThemeChange::BgTintHue(60.0)),
+        seg_button(
+            "Cool 240°",
+            (theme.bg_tint_hue - 240.0).abs() < 1.0,
+            p,
+            ThemeChange::BgTintHue(240.0)
+        ),
+        seg_button(
+            "Slate 270°",
+            (theme.bg_tint_hue - 270.0).abs() < 1.0,
+            p,
+            ThemeChange::BgTintHue(270.0)
+        ),
+        seg_button(
+            "Neutral 0°",
+            theme.bg_tint_hue.abs() < 1.0,
+            p,
+            ThemeChange::BgTintHue(0.0)
+        ),
+        seg_button(
+            "Warm 60°",
+            (theme.bg_tint_hue - 60.0).abs() < 1.0,
+            p,
+            ThemeChange::BgTintHue(60.0)
+        ),
     ]
     .spacing(6);
 
     column![
         eyebrow("BACKGROUND TINT", p),
-        labeled_slider(
-            "Hue",
-            &format!("{:.0}°", theme.bg_tint_hue),
-            tint_slider,
-            p,
-        ),
+        labeled_slider("Hue", &format!("{:.0}°", theme.bg_tint_hue), tint_slider, p,),
         preset_buttons,
         text("Subtle hue mixed into the surface ramp. Effect is most visible on dark mode.")
             .size(11)
@@ -255,7 +303,10 @@ fn labeled_slider<'a>(
 ) -> Element<'a, ThemeChange> {
     column![
         row![
-            text(label).size(11).color(p.fg_2).width(Length::Fixed(80.0)),
+            text(label)
+                .size(11)
+                .color(p.fg_2)
+                .width(Length::Fixed(80.0)),
             crate::style::hspace(),
             text(value_str.to_string()).size(11).color(p.fg_1),
         ]
@@ -266,8 +317,17 @@ fn labeled_slider<'a>(
     .into()
 }
 
-fn seg_button<'a>(label: &'a str, active: bool, p: Palette, msg: ThemeChange) -> Element<'a, ThemeChange> {
-    let kind = if active { ButtonKind::Primary } else { ButtonKind::Default };
+fn seg_button<'a>(
+    label: &'a str,
+    active: bool,
+    p: Palette,
+    msg: ThemeChange,
+) -> Element<'a, ThemeChange> {
+    let kind = if active {
+        ButtonKind::Primary
+    } else {
+        ButtonKind::Default
+    };
     button(text(label).size(11))
         .padding([5, 12])
         .style(button_style(p, kind))
@@ -326,12 +386,7 @@ fn saved_color_cell<'a>(idx: usize, lch: [f32; 3], p: Palette) -> Element<'a, Th
 }
 
 /// A square swatch box used in the picker preview.
-fn swatch_box<'a>(
-    color: Oklch,
-    size: f32,
-    rounded: bool,
-    p: Palette,
-) -> Element<'a, ThemeChange> {
+fn swatch_box<'a>(color: Oklch, size: f32, rounded: bool, p: Palette) -> Element<'a, ThemeChange> {
     let radius: f32 = if rounded { 8.0 } else { 0.0 };
     container(text("").size(1))
         .width(Length::Fixed(size))

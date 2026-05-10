@@ -278,16 +278,28 @@ mod tests {
     // --- per-kind elision tests ---
 
     fn pre_only() -> crate::HookFlags {
-        crate::HookFlags { pre: true, ..Default::default() }
+        crate::HookFlags {
+            pre: true,
+            ..Default::default()
+        }
     }
     fn post_only() -> crate::HookFlags {
-        crate::HookFlags { post: true, ..Default::default() }
+        crate::HookFlags {
+            post: true,
+            ..Default::default()
+        }
     }
     fn callback_only() -> crate::HookFlags {
-        crate::HookFlags { callback: true, ..Default::default() }
+        crate::HookFlags {
+            callback: true,
+            ..Default::default()
+        }
     }
     fn replace_only() -> crate::HookFlags {
-        crate::HookFlags { replace: true, ..Default::default() }
+        crate::HookFlags {
+            replace: true,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -301,7 +313,10 @@ mod tests {
             flags: pre_only(),
         });
         // Pre dispatch present.
-        assert!(out.contains("_lib._dispatch(\"hitbox-applydamage-pre\""), "{out}");
+        assert!(
+            out.contains("_lib._dispatch(\"hitbox-applydamage-pre\""),
+            "{out}"
+        );
         // Post / callback / replace probe all elided.
         assert!(!out.contains("hitbox-applydamage-post"), "{out}");
         assert!(!out.contains("hitbox-applydamage-callback"), "{out}");
@@ -337,7 +352,10 @@ mod tests {
             rename_prefix: "_rtv_vanilla_",
             flags: callback_only(),
         });
-        assert!(out.contains("_dispatch_deferred(\"compiler-spawn-callback\""), "{out}");
+        assert!(
+            out.contains("_dispatch_deferred(\"compiler-spawn-callback\""),
+            "{out}"
+        );
         assert!(!out.contains("compiler-spawn-pre"), "{out}");
         assert!(!out.contains("compiler-spawn-post"), "{out}");
         assert!(!out.contains("_get_hooks"), "{out}");
@@ -372,7 +390,11 @@ mod tests {
             script_prefix: "hitbox",
             indent: "\t",
             rename_prefix: "_rtv_vanilla_",
-            flags: crate::HookFlags { pre: true, post: true, ..Default::default() },
+            flags: crate::HookFlags {
+                pre: true,
+                post: true,
+                ..Default::default()
+            },
         });
         assert!(!out.contains("_get_hooks"), "{out}");
         assert!(!out.contains("_skip_super"), "{out}");
@@ -386,7 +408,10 @@ mod tests {
         // Three short-circuit branches (no-lib, no-hooks, re-entry) plus
         // the main-path direct call = 4. Legacy emission has 5 (the extra
         // is the replace-no-skip path's call).
-        assert_eq!(vanilla_calls, 4, "expected 4 vanilla calls, got {vanilla_calls}\n{out}");
+        assert_eq!(
+            vanilla_calls, 4,
+            "expected 4 vanilla calls, got {vanilla_calls}\n{out}"
+        );
     }
 
     #[test]

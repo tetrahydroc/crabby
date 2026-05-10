@@ -115,8 +115,7 @@ impl ModIndex {
         if !path.is_file() {
             return Ok(Self::default());
         }
-        let text = fs::read_to_string(&path)
-            .map_err(|s| CrabbyError::io_at(path.clone(), s))?;
+        let text = fs::read_to_string(&path).map_err(|s| CrabbyError::io_at(path.clone(), s))?;
         parse(&text).map_err(|source| CrabbyError::Config {
             context: format!("parsing {}", path.display()),
             source,
@@ -127,8 +126,7 @@ impl ModIndex {
     pub fn save(&self, game_dir: &Path) -> Result<()> {
         let path = Self::path_in(game_dir);
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|s| CrabbyError::io_at(parent.to_path_buf(), s))?;
+            fs::create_dir_all(parent).map_err(|s| CrabbyError::io_at(parent.to_path_buf(), s))?;
         }
         let rendered = render(self);
         fs::write(&path, rendered).map_err(|s| CrabbyError::io_at(path, s))?;
@@ -145,8 +143,10 @@ impl ModIndex {
 /// for other UI work.
 #[must_use]
 pub fn build(cfg: &ModConfig, discovered: &[DiscoveredMod]) -> ModIndex {
-    let by_id: BTreeMap<&str, &DiscoveredMod> =
-        discovered.iter().map(|m| (m.manifest.id.as_str(), m)).collect();
+    let by_id: BTreeMap<&str, &DiscoveredMod> = discovered
+        .iter()
+        .map(|m| (m.manifest.id.as_str(), m))
+        .collect();
     let mut entries = BTreeMap::new();
     let Some(profile) = cfg.active_profile() else {
         return ModIndex { entries };
@@ -252,7 +252,11 @@ fn render(idx: &ModIndex) -> String {
     out.push('\n');
     for (id, e) in &idx.entries {
         let _ = writeln!(out, "[mod.{id}]");
-        let _ = writeln!(out, "path = \"{}\"", escape_quoted(&e.path.to_string_lossy()));
+        let _ = writeln!(
+            out,
+            "path = \"{}\"",
+            escape_quoted(&e.path.to_string_lossy())
+        );
         let _ = writeln!(out, "source = \"{}\"", escape_quoted(&e.source));
         let _ = writeln!(out, "version = \"{}\"", escape_quoted(&e.version));
         let _ = writeln!(out, "mtime = {}", e.mtime);
@@ -475,11 +479,19 @@ mod tests {
         let mut cfg = ModConfig::default_fresh();
         cfg.active_profile_mut().mods.insert(
             "kept".into(),
-            crate::ModEntry { enabled: true, version: "1.0".into(), priority_override: None },
+            crate::ModEntry {
+                enabled: true,
+                version: "1.0".into(),
+                priority_override: None,
+            },
         );
         cfg.active_profile_mut().mods.insert(
             "dropped".into(),
-            crate::ModEntry { enabled: false, version: "1.0".into(), priority_override: None },
+            crate::ModEntry {
+                enabled: false,
+                version: "1.0".into(),
+                priority_override: None,
+            },
         );
         let mk = |id: &str| DiscoveredMod {
             archive_path: PathBuf::from(format!("/Mods/{id}.vmz")),
@@ -504,7 +516,11 @@ mod tests {
         let mut cfg = ModConfig::default_fresh();
         cfg.active_profile_mut().mods.insert(
             "ghost".into(),
-            crate::ModEntry { enabled: true, version: "1.0".into(), priority_override: None },
+            crate::ModEntry {
+                enabled: true,
+                version: "1.0".into(),
+                priority_override: None,
+            },
         );
         let idx = build(&cfg, &[]);
         assert!(idx.entries.is_empty());

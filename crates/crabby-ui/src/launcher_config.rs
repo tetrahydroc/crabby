@@ -98,11 +98,21 @@ pub struct ThemePrefs {
 /// are dropped when adding past this cap.
 pub const MAX_SAVED_COLORS: usize = 12;
 
-fn default_mode() -> String { "dark".into() }
-fn default_accent_l() -> f32 { 0.72 }
-fn default_accent_c() -> f32 { 0.12 }
-fn default_accent_h() -> f32 { 220.0 }
-fn default_bg_tint_h() -> f32 { 240.0 }
+fn default_mode() -> String {
+    "dark".into()
+}
+fn default_accent_l() -> f32 {
+    0.72
+}
+fn default_accent_c() -> f32 {
+    0.12
+}
+fn default_accent_h() -> f32 {
+    220.0
+}
+fn default_bg_tint_h() -> f32 {
+    240.0
+}
 
 /// Curated starter palette - the design's 9 hue presets at canonical
 /// L/C. Pre-seeded so the saved-colors row isn't empty on first launch.
@@ -183,15 +193,13 @@ impl LauncherConfig {
             Err(e) => warn!(error = %e, "ui: launcher config serialize failed"),
         }
     }
-
 }
 
 /// Resolve the launcher config path. `None` if the platform doesn't
 /// expose a user-config dir (rare; defensive).
 #[must_use]
 pub fn config_path() -> Option<PathBuf> {
-    ProjectDirs::from("", "", "crabby")
-        .map(|p| p.config_dir().join("launcher.toml"))
+    ProjectDirs::from("", "", "crabby").map(|p| p.config_dir().join("launcher.toml"))
 }
 
 /// Resolve the launcher log directory. Same parent as the config file,
@@ -245,7 +253,11 @@ fn days_to_ymd(days: u64) -> String {
     }
     let months_normal = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     let months_leap = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    let months = if is_leap(year) { months_leap } else { months_normal };
+    let months = if is_leap(year) {
+        months_leap
+    } else {
+        months_normal
+    };
     let mut month = 0_usize;
     while month < 12 && remaining >= months[month] {
         remaining -= months[month];

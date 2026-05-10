@@ -11,7 +11,9 @@
 //! sibling modules (`events_index_transform`, etc.) for analogous
 //! single-array kinds.
 
-use crate::id_index_transform::{IdIndexConfig, IdSource, IndexShape, transform as id_index_transform};
+use crate::id_index_transform::{
+    IdIndexConfig, IdSource, IndexShape, transform as id_index_transform,
+};
 
 /// Filename of vanilla's Recipes resource script.
 pub const RECIPES_SCHEMA_FILENAME: &str = "Recipes.gd";
@@ -61,7 +63,10 @@ mod tests {
         let out = transform(RECIPES_SCHEMA_FILENAME, VANILLA_RECIPES);
         assert!(out.contains("var _id_index: Dictionary = {}"), "{out}");
         assert!(out.contains(r#"for cat in ["consumables", "medical", "equipment", "weapons", "electronics", "misc", "furniture"]:"#), "{out}");
-        assert!(out.contains("func _index_add(id: String, entry: RecipeData, category: String)"), "{out}");
+        assert!(
+            out.contains("func _index_add(id: String, entry: RecipeData, category: String)"),
+            "{out}"
+        );
     }
 
     #[test]

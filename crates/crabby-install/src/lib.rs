@@ -40,12 +40,14 @@ mod pck_backup;
 mod uninstall;
 
 pub use artifacts::{
-    HOOK_PACK_FILE_NAME, LEGACY_SHIM_FILE_NAME, LIB_SOURCE, MANIFEST_DIR,
-    VANILLA_PCK_BACKUP_NAME, VANILLA_PCK_NAME,
+    HOOK_PACK_FILE_NAME, LEGACY_SHIM_FILE_NAME, LIB_SOURCE, MANIFEST_DIR, VANILLA_PCK_BACKUP_NAME,
+    VANILLA_PCK_NAME,
 };
 pub use bake_status::{BakeStatus, bake_status, bake_status_from_intents};
 pub use doctor::{DoctorReport, InstallStatus, doctor};
-pub use game_dir::{detect_game_dir, find_game_binary, steam_library_candidates, validate_game_dir};
+pub use game_dir::{
+    detect_game_dir, find_game_binary, steam_library_candidates, validate_game_dir,
+};
 pub use install::{InstallAction, InstallOptions, InstallReport, install};
 pub use manifest::InstallManifest;
 pub use pck_backup::{

@@ -18,7 +18,9 @@
 //! don't match their canonical names directly (e.g. AK-12.tres is
 //! addressed as "AK-12" via its `.file` field).
 
-use crate::id_index_transform::{IdIndexConfig, IdSource, IndexShape, transform as id_index_transform};
+use crate::id_index_transform::{
+    IdIndexConfig, IdSource, IndexShape, transform as id_index_transform,
+};
 
 /// Filename of the shared LootTable schema script.
 pub const LOOT_TABLE_SCHEMA_FILENAME: &str = "LootTable.gd";
@@ -53,7 +55,10 @@ mod tests {
         assert!(out.contains("var _id_index: Dictionary = {}"), "{out}");
         assert!(out.contains("for r in items:"), "{out}");
         assert!(out.contains(r#"var v: Variant = r.get("file")"#), "{out}");
-        assert!(out.contains("func _index_add(id: String, entry: ItemData)"), "{out}");
+        assert!(
+            out.contains("func _index_add(id: String, entry: ItemData)"),
+            "{out}"
+        );
     }
 
     #[test]

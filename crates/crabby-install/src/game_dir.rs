@@ -93,7 +93,11 @@ pub fn steam_library_candidates() -> Vec<PathBuf> {
             // launcher under WSL can see Windows-side installs).
             let wsl_root = format!("/mnt/{}/", (ch as char).to_ascii_lowercase());
             if Path::new(&wsl_root).is_dir() {
-                out.push(PathBuf::from(&wsl_root).join("Program Files (x86)/Steam").join(RTV_REL));
+                out.push(
+                    PathBuf::from(&wsl_root)
+                        .join("Program Files (x86)/Steam")
+                        .join(RTV_REL),
+                );
                 out.push(PathBuf::from(&wsl_root).join("SteamLibrary").join(RTV_REL));
             }
         }
@@ -106,7 +110,11 @@ pub fn steam_library_candidates() -> Vec<PathBuf> {
         for ch in b'a'..=b'z' {
             let mnt = format!("/mnt/{}/", ch as char);
             if Path::new(&mnt).is_dir() {
-                out.push(PathBuf::from(&mnt).join("Program Files (x86)/Steam").join(RTV_REL));
+                out.push(
+                    PathBuf::from(&mnt)
+                        .join("Program Files (x86)/Steam")
+                        .join(RTV_REL),
+                );
                 out.push(PathBuf::from(&mnt).join("SteamLibrary").join(RTV_REL));
             }
         }
@@ -115,7 +123,10 @@ pub fn steam_library_candidates() -> Vec<PathBuf> {
             out.push(home.join(".steam/steam").join(RTV_REL));
             out.push(home.join(".local/share/Steam").join(RTV_REL));
             // Flatpak Steam.
-            out.push(home.join(".var/app/com.valvesoftware.Steam/data/Steam").join(RTV_REL));
+            out.push(
+                home.join(".var/app/com.valvesoftware.Steam/data/Steam")
+                    .join(RTV_REL),
+            );
         }
     }
 

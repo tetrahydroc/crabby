@@ -16,8 +16,7 @@ use serde::{Deserialize, Serialize};
 /// Resolve the cache root. `None` if the platform has no user-config dir.
 #[must_use]
 pub fn cache_dir() -> Option<PathBuf> {
-    ProjectDirs::from("", "", "crabby")
-        .map(|p| p.config_dir().join("cache").join("modworkshop"))
+    ProjectDirs::from("", "", "crabby").map(|p| p.config_dir().join("cache").join("modworkshop"))
 }
 
 /// Path for a specific (kind, id) entry. `kind` is a short discriminator
@@ -40,7 +39,13 @@ pub fn image_cache_path(file: &str) -> Option<PathBuf> {
 /// filenames are flat (no slashes, no `..`) but defended anyway.
 fn sanitize_filename(name: &str) -> String {
     name.chars()
-        .map(|c| if matches!(c, '/' | '\\' | '\0') { '_' } else { c })
+        .map(|c| {
+            if matches!(c, '/' | '\\' | '\0') {
+                '_'
+            } else {
+                c
+            }
+        })
         .collect()
 }
 
@@ -90,7 +95,11 @@ impl Envelope {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        Self { fetched_at, body, schema: CACHE_SCHEMA }
+        Self {
+            fetched_at,
+            body,
+            schema: CACHE_SCHEMA,
+        }
     }
 
     pub fn age(&self) -> Duration {

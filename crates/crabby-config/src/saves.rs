@@ -113,7 +113,10 @@ pub struct ActiveTarget {
 
 impl Default for ActiveTarget {
     fn default() -> Self {
-        Self { profile: DEFAULT_NAME.into(), slot: DEFAULT_NAME.into() }
+        Self {
+            profile: DEFAULT_NAME.into(),
+            slot: DEFAULT_NAME.into(),
+        }
     }
 }
 
@@ -161,10 +164,16 @@ pub enum SavesError {
 
 impl SavesError {
     fn io(ctx: impl Into<String>, source: std::io::Error) -> Self {
-        Self::Io { ctx: ctx.into(), source }
+        Self::Io {
+            ctx: ctx.into(),
+            source,
+        }
     }
     fn zip(ctx: impl Into<String>, source: zip::result::ZipError) -> Self {
-        Self::Zip { ctx: ctx.into(), source }
+        Self::Zip {
+            ctx: ctx.into(),
+            source,
+        }
     }
 }
 
@@ -178,7 +187,8 @@ pub fn is_safe_name(name: &str) -> bool {
     if name.contains('/') || name.contains('\\') || name.contains("..") {
         return false;
     }
-    name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == ' ')
+    name.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == ' ')
 }
 
 /// `<user>/saves/`. Created on demand by [`list_slots`] / [`create_slot`].
@@ -224,7 +234,9 @@ pub struct VanillaSaveSet {
 /// metadata errors are absorbed, a save with one unreadable mtime
 /// still appears in the set.
 pub fn scan_vanilla_root_saves() -> Result<Option<VanillaSaveSet>, SavesError> {
-    let Some(root) = user_data_dir() else { return Err(SavesError::NoUserDir) };
+    let Some(root) = user_data_dir() else {
+        return Err(SavesError::NoUserDir);
+    };
     if !root.exists() {
         // Vanilla user dir hasn't been created yet, nothing could be
         // there to migrate. Not an error.
@@ -233,18 +245,23 @@ pub fn scan_vanilla_root_saves() -> Result<Option<VanillaSaveSet>, SavesError> {
     let mut files: Vec<PathBuf> = Vec::new();
     let mut total: u64 = 0;
     let mut newest: Option<SystemTime> = None;
-    let preserved: std::collections::HashSet<&str> = VANILLA_PRESERVED_FILES.iter().copied().collect();
-    let entries = fs::read_dir(&root)
-        .map_err(|e| SavesError::io(format!("read {}", root.display()), e))?;
+    let preserved: std::collections::HashSet<&str> =
+        VANILLA_PRESERVED_FILES.iter().copied().collect();
+    let entries =
+        fs::read_dir(&root).map_err(|e| SavesError::io(format!("read {}", root.display()), e))?;
     for entry in entries.flatten() {
         let path = entry.path();
         // Top-level files only; subdirs (saves/, MCM/, .crabby/, etc.)
         // are ours or known-other and don't belong in the vanilla set.
-        let Ok(file_type) = entry.file_type() else { continue };
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
         if !file_type.is_file() {
             continue;
         }
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
         if !name.ends_with(".tres") {
             continue;
         }
@@ -268,14 +285,20 @@ pub fn scan_vanilla_root_saves() -> Result<Option<VanillaSaveSet>, SavesError> {
         return Ok(None);
     }
     files.sort();
-    Ok(Some(VanillaSaveSet { files, total_size_bytes: total, last_modified: newest }))
+    Ok(Some(VanillaSaveSet {
+        files,
+        total_size_bytes: total,
+        last_modified: newest,
+    }))
 }
 
 /// Read the active (profile, slot). Falls back to defaults on missing
 /// file, parse error, or unsafe values.
 #[must_use]
 pub fn active_target() -> ActiveTarget {
-    let Some(path) = active_slot_file() else { return ActiveTarget::default() };
+    let Some(path) = active_slot_file() else {
+        return ActiveTarget::default();
+    };
     let raw = match fs::read_to_string(&path) {
         Ok(s) => s,
         Err(_) => return ActiveTarget::default(),
@@ -292,7 +315,9 @@ pub fn parse_active_slot_file(raw: &str) -> ActiveTarget {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        let Some((key, value)) = line.split_once('=') else { continue };
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
         let key = key.trim();
         let value = value.trim();
         match key {
@@ -322,9 +347,11 @@ pub fn set_active_target(profile: &str, slot: &str) -> Result<(), SavesError> {
     let dir = user_data_dir().ok_or(SavesError::NoUserDir)?;
     fs::create_dir_all(&dir).map_err(|e| SavesError::io(format!("create {}", dir.display()), e))?;
     let path = dir.join(ACTIVE_SLOT_FILE);
-    let body = render_active_slot_file(&ActiveTarget { profile: profile.into(), slot: slot.into() });
-    fs::write(&path, body)
-        .map_err(|e| SavesError::io(format!("write {}", path.display()), e))?;
+    let body = render_active_slot_file(&ActiveTarget {
+        profile: profile.into(),
+        slot: slot.into(),
+    });
+    fs::write(&path, body).map_err(|e| SavesError::io(format!("write {}", path.display()), e))?;
     Ok(())
 }
 
@@ -352,14 +379,16 @@ pub fn list_slots(profile: &str) -> Result<Vec<SlotInfo>, SavesError> {
     if !is_safe_name(profile) {
         return Err(SavesError::InvalidName(profile.into()));
     }
-    let Some(dir) = profile_dir(profile) else { return Err(SavesError::NoUserDir) };
+    let Some(dir) = profile_dir(profile) else {
+        return Err(SavesError::NoUserDir);
+    };
     if !dir.exists() {
         return Ok(Vec::new());
     }
     let active = active_target();
     let mut out = Vec::new();
-    for entry in fs::read_dir(&dir)
-        .map_err(|e| SavesError::io(format!("read {}", dir.display()), e))?
+    for entry in
+        fs::read_dir(&dir).map_err(|e| SavesError::io(format!("read {}", dir.display()), e))?
     {
         let entry = match entry {
             Ok(e) => e,
@@ -393,13 +422,15 @@ pub fn list_slots(profile: &str) -> Result<Vec<SlotInfo>, SavesError> {
 /// List slots across every profile dir under `saves/`. Returned vec
 /// is sorted by `(profile, slot)`.
 pub fn list_all_slots() -> Result<Vec<SlotInfo>, SavesError> {
-    let Some(root) = saves_root() else { return Err(SavesError::NoUserDir) };
+    let Some(root) = saves_root() else {
+        return Err(SavesError::NoUserDir);
+    };
     if !root.exists() {
         return Ok(Vec::new());
     }
     let mut out = Vec::new();
-    for entry in fs::read_dir(&root)
-        .map_err(|e| SavesError::io(format!("read {}", root.display()), e))?
+    for entry in
+        fs::read_dir(&root).map_err(|e| SavesError::io(format!("read {}", root.display()), e))?
     {
         let entry = match entry {
             Ok(e) => e,
@@ -418,20 +449,24 @@ pub fn list_all_slots() -> Result<Vec<SlotInfo>, SavesError> {
         }
         out.extend(list_slots(&profile)?);
     }
-    out.sort_by(|a, b| (a.profile.as_str(), a.name.as_str()).cmp(&(b.profile.as_str(), b.name.as_str())));
+    out.sort_by(|a, b| {
+        (a.profile.as_str(), a.name.as_str()).cmp(&(b.profile.as_str(), b.name.as_str()))
+    });
     Ok(out)
 }
 
 /// List discovered profile names (i.e. dirs under `saves/`). Useful
 /// for the "show all profiles" toggle in the UI.
 pub fn list_profiles() -> Result<Vec<ProfileName>, SavesError> {
-    let Some(root) = saves_root() else { return Err(SavesError::NoUserDir) };
+    let Some(root) = saves_root() else {
+        return Err(SavesError::NoUserDir);
+    };
     if !root.exists() {
         return Ok(Vec::new());
     }
     let mut out = Vec::new();
-    for entry in fs::read_dir(&root)
-        .map_err(|e| SavesError::io(format!("read {}", root.display()), e))?
+    for entry in
+        fs::read_dir(&root).map_err(|e| SavesError::io(format!("read {}", root.display()), e))?
     {
         let entry = match entry {
             Ok(e) => e,
@@ -533,7 +568,11 @@ pub fn import_vanilla_to_slot(
     let src_names: Vec<String> = set
         .files
         .iter()
-        .filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(|s| s.to_string()))
+        .filter_map(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|s| s.to_string())
+        })
         .collect();
     if dst_dir.exists() {
         let existing: std::collections::HashSet<String> = fs::read_dir(&dst_dir)
@@ -563,13 +602,14 @@ pub fn import_vanilla_to_slot(
     // rename across mounts fails with EXDEV.
     let mut moved = Vec::with_capacity(set.files.len());
     for src in &set.files {
-        let Some(name) = src.file_name().and_then(|n| n.to_str()) else { continue };
+        let Some(name) = src.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
         let dst = dst_dir.join(name);
         fs::copy(src, &dst).map_err(|e| {
             SavesError::io(format!("copy {} -> {}", src.display(), dst.display()), e)
         })?;
-        fs::remove_file(src)
-            .map_err(|e| SavesError::io(format!("remove {}", src.display()), e))?;
+        fs::remove_file(src).map_err(|e| SavesError::io(format!("remove {}", src.display()), e))?;
         moved.push(name.to_string());
     }
     Ok(ImportReport { moved })
@@ -646,7 +686,11 @@ pub fn move_slot_between_profiles(
     // rather than guess.
     let src_names: Vec<String> = src_entries
         .iter()
-        .filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(|s| s.to_string()))
+        .filter_map(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|s| s.to_string())
+        })
         .collect();
     if dst_dir.exists() {
         let existing: std::collections::HashSet<String> = fs::read_dir(&dst_dir)
@@ -676,20 +720,20 @@ pub fn move_slot_between_profiles(
     // same reason: fs::rename refuses cross-device on most platforms.
     let mut moved = Vec::with_capacity(src_entries.len());
     for src in &src_entries {
-        let Some(name) = src.file_name().and_then(|n| n.to_str()) else { continue };
+        let Some(name) = src.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
         let dst = dst_dir.join(name);
         if src.is_dir() {
             copy_dir_recursive(src, &dst)?;
-            fs::remove_dir_all(src).map_err(|e| {
-                SavesError::io(format!("remove dir {}", src.display()), e)
-            })?;
+            fs::remove_dir_all(src)
+                .map_err(|e| SavesError::io(format!("remove dir {}", src.display()), e))?;
         } else {
             fs::copy(src, &dst).map_err(|e| {
                 SavesError::io(format!("copy {} -> {}", src.display(), dst.display()), e)
             })?;
-            fs::remove_file(src).map_err(|e| {
-                SavesError::io(format!("remove {}", src.display()), e)
-            })?;
+            fs::remove_file(src)
+                .map_err(|e| SavesError::io(format!("remove {}", src.display()), e))?;
         }
         moved.push(name.to_string());
     }
@@ -704,14 +748,15 @@ pub fn move_slot_between_profiles(
 /// Recursive directory copy. Used by the slot-move path to bring
 /// `.snapshots/` along with the slot. `dst` is created if missing.
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), SavesError> {
-    fs::create_dir_all(dst)
-        .map_err(|e| SavesError::io(format!("create {}", dst.display()), e))?;
+    fs::create_dir_all(dst).map_err(|e| SavesError::io(format!("create {}", dst.display()), e))?;
     for entry in fs::read_dir(src)
         .map_err(|e| SavesError::io(format!("read {}", src.display()), e))?
         .flatten()
     {
         let path = entry.path();
-        let Some(name) = path.file_name() else { continue };
+        let Some(name) = path.file_name() else {
+            continue;
+        };
         let dst_path = dst.join(name);
         if path.is_dir() {
             copy_dir_recursive(&path, &dst_path)?;
@@ -740,8 +785,8 @@ pub fn list_snapshots(profile: &str, slot: &str) -> Result<Vec<SnapshotInfo>, Sa
         return Ok(Vec::new());
     }
     let mut out = Vec::new();
-    for entry in fs::read_dir(&dir)
-        .map_err(|e| SavesError::io(format!("read {}", dir.display()), e))?
+    for entry in
+        fs::read_dir(&dir).map_err(|e| SavesError::io(format!("read {}", dir.display()), e))?
     {
         let entry = match entry {
             Ok(e) => e,
@@ -771,11 +816,7 @@ pub fn list_snapshots(profile: &str, slot: &str) -> Result<Vec<SnapshotInfo>, Sa
 }
 
 /// Snapshot the slot dir into its own `.snapshots/<file_name>.zip`.
-pub fn snapshot_slot(
-    profile: &str,
-    slot: &str,
-    file_name: &str,
-) -> Result<PathBuf, SavesError> {
+pub fn snapshot_slot(profile: &str, slot: &str, file_name: &str) -> Result<PathBuf, SavesError> {
     if !is_safe_name(profile) {
         return Err(SavesError::InvalidName(profile.into()));
     }
@@ -820,11 +861,7 @@ pub fn snapshot_slot(
 
 /// Restore a snapshot into its owning (profile, slot). The caller
 /// supplies both, UI must not let the user restore across profiles.
-pub fn restore_snapshot(
-    profile: &str,
-    slot: &str,
-    snapshot_path: &Path,
-) -> Result<(), SavesError> {
+pub fn restore_snapshot(profile: &str, slot: &str, snapshot_path: &Path) -> Result<(), SavesError> {
     if !is_safe_name(profile) {
         return Err(SavesError::InvalidName(profile.into()));
     }
@@ -832,12 +869,11 @@ pub fn restore_snapshot(
         return Err(SavesError::InvalidName(slot.into()));
     }
     let sd = slot_dir(profile, slot).ok_or(SavesError::NoUserDir)?;
-    fs::create_dir_all(&sd)
-        .map_err(|e| SavesError::io(format!("create {}", sd.display()), e))?;
+    fs::create_dir_all(&sd).map_err(|e| SavesError::io(format!("create {}", sd.display()), e))?;
 
     // Wipe existing slot contents except `.snapshots/`.
-    for entry in fs::read_dir(&sd)
-        .map_err(|e| SavesError::io(format!("read {}", sd.display()), e))?
+    for entry in
+        fs::read_dir(&sd).map_err(|e| SavesError::io(format!("read {}", sd.display()), e))?
     {
         let entry = match entry {
             Ok(e) => e,
@@ -951,7 +987,9 @@ fn write_dir_to_zip<W: Write + std::io::Seek>(
 #[must_use]
 pub fn default_snapshot_name() -> String {
     use std::time::{Duration, UNIX_EPOCH};
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO);
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO);
     let secs = now.as_secs() as i64;
     let (y, mo, d, h, mi, s) = utc_breakdown(secs);
     format!("auto-{y:04}{mo:02}{d:02}-{h:02}{mi:02}{s:02}")
@@ -1097,7 +1135,10 @@ mod tests {
 
     #[test]
     fn render_round_trips() {
-        let t = ActiveTarget { profile: "p1".into(), slot: "s1".into() };
+        let t = ActiveTarget {
+            profile: "p1".into(),
+            slot: "s1".into(),
+        };
         let raw = render_active_slot_file(&t);
         let parsed = parse_active_slot_file(&raw);
         assert_eq!(parsed.profile, t.profile);

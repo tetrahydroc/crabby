@@ -101,7 +101,10 @@ mod tests {
             .find("Crabby fish_species merge")
             .expect("prelude present");
         let body_pos = out.find("set_layer_mask_value").expect("body present");
-        assert!(ready_pos < prelude_pos, "prelude must follow signature\n{out}");
+        assert!(
+            ready_pos < prelude_pos,
+            "prelude must follow signature\n{out}"
+        );
         assert!(prelude_pos < body_pos, "prelude must precede body\n{out}");
     }
 
@@ -113,7 +116,10 @@ mod tests {
             out.contains("Engine.get_meta(\"_rtv_fish_species\", [])"),
             "{out}",
         );
-        assert!(out.contains("_rtv_pool_id != \"all\" and _rtv_pool_id != name"), "{out}");
+        assert!(
+            out.contains("_rtv_pool_id != \"all\" and _rtv_pool_id != name"),
+            "{out}"
+        );
         assert!(out.contains("species.append"), "{out}");
     }
 

@@ -34,8 +34,8 @@
 mod discover;
 
 pub use discover::{
-    BootScan, analyze_active_profile, analyze_active_profile_with_schema,
-    analyze_enabled_mods, one_line_summary, read_mod_scripts, scan_active_profile,
+    BootScan, analyze_active_profile, analyze_active_profile_with_schema, analyze_enabled_mods,
+    one_line_summary, read_mod_scripts, scan_active_profile,
 };
 
 use std::sync::LazyLock;
@@ -274,10 +274,7 @@ impl VanillaSchema {
     /// they have on hand.
     #[must_use]
     pub fn methods_for(&self, target: &str) -> Option<&std::collections::BTreeSet<String>> {
-        let bare = target
-            .rsplit('/')
-            .next()
-            .unwrap_or(target);
+        let bare = target.rsplit('/').next().unwrap_or(target);
         self.methods_by_script.get(bare)
     }
 }
@@ -397,15 +394,17 @@ fn grade_swap_severity(
                 .collect::<Vec<_>>()
                 .join(", ")
         } else {
-            let first = overlap.iter().take(4).map(|s| s.as_str()).collect::<Vec<_>>().join(", ");
+            let first = overlap
+                .iter()
+                .take(4)
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
             format!("{first}, +{} more", overlap.len() - 4)
         };
         (
             Severity::Warn,
-            format!(
-                "overrides {} vanilla method(s): {preview}",
-                overlap.len()
-            ),
+            format!("overrides {} vanilla method(s): {preview}", overlap.len()),
         )
     }
 }
@@ -575,8 +574,7 @@ static HOOK_MANY_ENTRY: LazyLock<Regex> =
 /// Open paren for `setup([...])` calls. The loop walks for the
 /// matching `)` then scans the inner Array literal for plan entries.
 static SETUP_CALL_OPEN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"\b[A-Za-z_][A-Za-z0-9_]*\s*\.\s*setup\s*\(\s*\["#)
-        .expect("SETUP_CALL_OPEN regex")
+    Regex::new(r#"\b[A-Za-z_][A-Za-z0-9_]*\s*\.\s*setup\s*\(\s*\["#).expect("SETUP_CALL_OPEN regex")
 });
 
 /// Locates `<call>(` openings, where the caller scans for the matching
@@ -681,8 +679,7 @@ fn scan_setup_plan(filename: &str, source: &str, start: usize, end: usize, out: 
     // bracket-then-string pattern: `[` (possibly with whitespace)
     // followed by a `"<word>"`. Capture group 1 = the verb.
     static SETUP_ENTRY: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r#"\[\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*"#)
-            .expect("SETUP_ENTRY regex")
+        Regex::new(r#"\[\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*"#).expect("SETUP_ENTRY regex")
     });
     // Inside an entry, after the verb slot: pull the optional registry
     // string slot for primitive verbs.
@@ -706,7 +703,9 @@ fn scan_setup_plan(filename: &str, source: &str, start: usize, end: usize, out: 
                 let registry = SETUP_SECOND_STR
                     .captures(after_verb)
                     .and_then(|c| c.get(1).map(|m| m.as_str().to_string()));
-                let Some(rverb) = RegistryVerb::from_str(verb) else { continue };
+                let Some(rverb) = RegistryVerb::from_str(verb) else {
+                    continue;
+                };
                 out.registry_writes.push(RegistryWriteIntent {
                     filename: filename.to_string(),
                     line,
@@ -719,8 +718,12 @@ fn scan_setup_plan(filename: &str, source: &str, start: usize, end: usize, out: 
             }
             // Aggregator verbs (no kind slot, since aggregator name
             // implies the registry).
-            "register_item" | "register_weapon" | "register_magazine"
-            | "register_attachment" | "register_furniture" | "register_ai_loadout" => {
+            "register_item"
+            | "register_weapon"
+            | "register_magazine"
+            | "register_attachment"
+            | "register_furniture"
+            | "register_ai_loadout" => {
                 let synthetic_registry = match verb {
                     "register_item" => "items",
                     "register_weapon" => "weapons",
@@ -817,10 +820,8 @@ static EXTENDS_VANILLA: LazyLock<Regex> = LazyLock::new(|| {
 /// call. Same vanilla-root allowlist as [`EXTENDS_VANILLA`] to avoid
 /// flagging mod-internal preloads.
 static PRELOAD_SCRIPT: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r#"\bpreload\s*\(\s*"res://Scripts/[^"]+\.gd"\s*\)\s*\.\s*[A-Za-z_]"#,
-    )
-    .expect("PRELOAD_SCRIPT regex")
+    Regex::new(r#"\bpreload\s*\(\s*"res://Scripts/[^"]+\.gd"\s*\)\s*\.\s*[A-Za-z_]"#)
+        .expect("PRELOAD_SCRIPT regex")
 });
 
 // --- Scan a single file ------------------------------------------------------
@@ -884,7 +885,10 @@ pub fn scan_source_with_ctx(
             .map(|m| m.as_str().trim().to_string())
             .unwrap_or_default();
         let line = byte_to_line(source, cap.get(0).expect("hook match").start());
-        let kind = name.as_deref().map(HookKind::from_name).unwrap_or(HookKind::Unknown);
+        let kind = name
+            .as_deref()
+            .map(HookKind::from_name)
+            .unwrap_or(HookKind::Unknown);
         // Any literal-named hook is `Static` for now. The deferred-vs-true-static
         // distinction lands when call-graph tracing arrives.
         let resolvability = if name.is_some() {
@@ -908,7 +912,9 @@ pub fn scan_source_with_ctx(
     // literal registry name anyway, so this isn't a real loss.
     for cap in REGISTRY_CALL.captures_iter(source) {
         let verb_str = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-        let Some(verb) = RegistryVerb::from_str(verb_str) else { continue };
+        let Some(verb) = RegistryVerb::from_str(verb_str) else {
+            continue;
+        };
         let registry = cap.get(2).map(|m| m.as_str().to_string());
         let rest = cap.get(3).map(|m| m.as_str()).unwrap_or("");
         let (key, payload_text, resolvability) = parse_registry_rest(rest, registry.is_some());
@@ -932,7 +938,9 @@ pub fn scan_source_with_ctx(
     // the dict literal which is overkill.
     for cap in REGISTRY_MANY_CALL.captures_iter(source) {
         let verb_str = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-        let Some(verb) = RegistryVerb::from_str(verb_str) else { continue };
+        let Some(verb) = RegistryVerb::from_str(verb_str) else {
+            continue;
+        };
         let registry = cap.get(2).map(|m| m.as_str().to_string());
         let line = byte_to_line(source, cap.get(0).expect("many match").start());
         out.registry_writes.push(RegistryWriteIntent {
@@ -979,12 +987,17 @@ pub fn scan_source_with_ctx(
     // require lexical analysis the analyzer doesn't do.
     for m in HOOK_MANY_CALL.find_iter(source) {
         let brace_start = m.end(); // byte after the `{`
-        let Some(close) = find_matching(source, brace_start, '{', '}') else { continue };
+        let Some(close) = find_matching(source, brace_start, '{', '}') else {
+            continue;
+        };
         let inner = &source[brace_start..close];
         for entry in HOOK_MANY_ENTRY.captures_iter(inner) {
             let name = entry.get(1).map(|c| c.as_str().to_string());
             let line = byte_to_line(source, m.start());
-            let kind = name.as_deref().map(HookKind::from_name).unwrap_or(HookKind::Unknown);
+            let kind = name
+                .as_deref()
+                .map(HookKind::from_name)
+                .unwrap_or(HookKind::Unknown);
             out.hooks.push(HookIntent {
                 filename: filename.to_string(),
                 line,
@@ -1006,7 +1019,9 @@ pub fn scan_source_with_ctx(
         // m.end() points just past the outer `[`. Find its matching
         // `]` for the plan body, then scan inside for entries.
         let plan_start = m.end();
-        let Some(plan_end) = find_matching(source, plan_start, '[', ']') else { continue };
+        let Some(plan_end) = find_matching(source, plan_start, '[', ']') else {
+            continue;
+        };
         scan_setup_plan(filename, source, plan_start, plan_end, out);
     }
 
@@ -1020,7 +1035,9 @@ pub fn scan_source_with_ctx(
     // `set_script(load("res://..."))` that would defeat a `[^)]`
     // match.
     for m in TAKE_OVER_PATH_OPEN.find_iter(source) {
-        let Some(close) = find_matching_paren(source, m.end()) else { continue };
+        let Some(close) = find_matching_paren(source, m.end()) else {
+            continue;
+        };
         let arg = source[m.end()..close].trim().to_string();
         let origin = if arg.starts_with('"') {
             classify_target_path(&arg)
@@ -1031,7 +1048,8 @@ pub fn scan_source_with_ctx(
         let baseline = severity_for(origin);
         let verdict = match origin {
             TargetOrigin::Vanilla => {
-                "swaps a vanilla script (companion `set_script(load(\"...\"))` decides what runs)".into()
+                "swaps a vanilla script (companion `set_script(load(\"...\"))` decides what runs)"
+                    .into()
             }
             TargetOrigin::ModInternal => "mod-internal swap; doesn't touch vanilla".into(),
             TargetOrigin::Unknown => "non-literal arg; can't determine target".into(),
@@ -1046,7 +1064,9 @@ pub fn scan_source_with_ctx(
         });
     }
     for m in SET_SCRIPT_OPEN.find_iter(source) {
-        let Some(close) = find_matching_paren(source, m.end()) else { continue };
+        let Some(close) = find_matching_paren(source, m.end()) else {
+            continue;
+        };
         let arg = source[m.end()..close].trim().to_string();
         // The arg might be `load("res://...")`, `preload("res://...")`,
         // OR a bare variable name like `script` that was bound earlier
@@ -1054,7 +1074,10 @@ pub fn scan_source_with_ctx(
         let load_path = extract_load_path(&arg).or_else(|| {
             let trimmed = arg.trim();
             // Identifier-shaped arg → look up in var_bindings.
-            if trimmed.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') && !trimmed.is_empty()
+            if trimmed
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && !trimmed.is_empty()
             {
                 var_bindings.get(trimmed).cloned()
             } else {
@@ -1077,9 +1100,7 @@ pub fn scan_source_with_ctx(
             TargetOrigin::ModInternal => "attaches a mod-internal script".into(),
             TargetOrigin::Unknown => "non-literal script arg; can't determine".into(),
         };
-        if let (Some(swap_path), Some(schema)) =
-            (load_path.as_deref(), ctx.schema)
-        {
+        if let (Some(swap_path), Some(schema)) = (load_path.as_deref(), ctx.schema) {
             // The swap-script is mod-internal. Find a paired
             // take_over_path that says which vanilla script is
             // being swapped out. Scans the same source for
@@ -1252,7 +1273,15 @@ fn parse_registry_rest(
     registry_present: bool,
 ) -> (Option<String>, String, Resolvability) {
     if rest.is_empty() {
-        return (None, String::new(), if registry_present { Resolvability::Static } else { Resolvability::RuntimeOnly });
+        return (
+            None,
+            String::new(),
+            if registry_present {
+                Resolvability::Static
+            } else {
+                Resolvability::RuntimeOnly
+            },
+        );
     }
     let parts = split_top_level_commas(rest, 1);
     let key = parts.first().and_then(|s| string_literal(s));
@@ -1455,7 +1484,9 @@ pub fn detect_conflicts(intents: &[ModIntent]) -> Vec<Conflict> {
         BTreeMap::new();
     for intent in intents {
         for w in &intent.registry_writes {
-            let (Some(r), Some(k)) = (&w.registry, &w.key) else { continue };
+            let (Some(r), Some(k)) = (&w.registry, &w.key) else {
+                continue;
+            };
             reg_buckets
                 .entry((r.clone(), k.clone()))
                 .or_default()
@@ -1475,12 +1506,7 @@ pub fn detect_conflicts(intents: &[ModIntent]) -> Vec<Conflict> {
                 registry: registry.clone(),
                 key: key.clone(),
             },
-            headline: format!(
-                "{} mods touch `{}/{}`",
-                mods.len(),
-                registry,
-                key,
-            ),
+            headline: format!("{} mods touch `{}/{}`", mods.len(), registry, key,),
             participants: mods
                 .into_iter()
                 .map(|(mid, cs, detail)| ConflictParticipant {
@@ -1499,7 +1525,9 @@ pub fn detect_conflicts(intents: &[ModIntent]) -> Vec<Conflict> {
             if h.kind != HookKind::Replace {
                 continue;
             }
-            let Some(name) = h.hook_name.as_ref() else { continue };
+            let Some(name) = h.hook_name.as_ref() else {
+                continue;
+            };
             replace_buckets.entry(name.clone()).or_default().push((
                 intent.mod_id.clone(),
                 format!("{}:{}", h.filename, h.line),
@@ -1545,14 +1573,11 @@ pub fn detect_conflicts(intents: &[ModIntent]) -> Vec<Conflict> {
             if !matches!(classify_target_path(target), TargetOrigin::Vanilla) {
                 continue;
             }
-            swap_buckets
-                .entry(target.clone())
-                .or_default()
-                .push((
-                    intent.mod_id.clone(),
-                    format!("{}:{}", c.filename, c.line),
-                    c.verdict.clone(),
-                ));
+            swap_buckets.entry(target.clone()).or_default().push((
+                intent.mod_id.clone(),
+                format!("{}:{}", c.filename, c.line),
+                c.verdict.clone(),
+            ));
         }
     }
     for (target, mods) in swap_buckets {
@@ -1563,11 +1588,7 @@ pub fn detect_conflicts(intents: &[ModIntent]) -> Vec<Conflict> {
             kind: ConflictKind::DuplicateVanillaSwap {
                 target: target.clone(),
             },
-            headline: format!(
-                "{} mods swap `{}` via take_over_path",
-                mods.len(),
-                target,
-            ),
+            headline: format!("{} mods swap `{}` via take_over_path", mods.len(), target,),
             participants: mods
                 .into_iter()
                 .map(|(mid, cs, detail)| ConflictParticipant {
@@ -1628,10 +1649,7 @@ pub fn detect_conflicts(intents: &[ModIntent]) -> Vec<Conflict> {
                     pattern: c.pattern,
                     severity: c.severity,
                 },
-                headline: format!(
-                    "{}: {kind_label} on `{target_str}`",
-                    intent.mod_id,
-                ),
+                headline: format!("{}: {kind_label} on `{target_str}`", intent.mod_id,),
                 participants: vec![ConflictParticipant {
                     mod_id: intent.mod_id.clone(),
                     callsite: format!("{}:{}", c.filename, c.line),
@@ -1688,7 +1706,10 @@ pub fn mod_max_conflict_severity(conflicts: &[Conflict], mod_id: &str) -> Option
 /// Convenience wrapper over [`mod_max_conflict_severity`].
 #[must_use]
 pub fn mod_has_hard_conflict(conflicts: &[Conflict], mod_id: &str) -> bool {
-    matches!(mod_max_conflict_severity(conflicts, mod_id), Some(Severity::Hard))
+    matches!(
+        mod_max_conflict_severity(conflicts, mod_id),
+        Some(Severity::Hard)
+    )
 }
 
 /// Distill a slice of `ModIntent`s into the set of hook BASE names
@@ -1709,7 +1730,9 @@ pub fn collect_hooked_method_bases(intents: &[ModIntent]) -> std::collections::H
     let mut out: std::collections::HashSet<String> = std::collections::HashSet::new();
     for intent in intents {
         for h in &intent.hooks {
-            let Some(name) = h.hook_name.as_deref() else { continue };
+            let Some(name) = h.hook_name.as_deref() else {
+                continue;
+            };
             // Strip the kind suffix to get the base. Replace hooks
             // (no suffix) are already the base.
             let base: &str = name
@@ -1796,7 +1819,9 @@ where
         std::collections::HashMap::new();
     for intent in intents {
         for h in &intent.hooks {
-            let Some(name) = h.hook_name.as_deref() else { continue };
+            let Some(name) = h.hook_name.as_deref() else {
+                continue;
+            };
             let (base, kind) = if let Some(b) = name.strip_suffix("-pre") {
                 (b, HookKind::Pre)
             } else if let Some(b) = name.strip_suffix("-post") {
@@ -1826,8 +1851,9 @@ where
 fn severity_of(c: &Conflict) -> Severity {
     match c.kind {
         ConflictKind::DuplicateVanillaSwap { .. } => Severity::Hard,
-        ConflictKind::RegistryCollision { .. }
-        | ConflictKind::ReplaceHookCollision { .. } => Severity::Warn,
+        ConflictKind::RegistryCollision { .. } | ConflictKind::ReplaceHookCollision { .. } => {
+            Severity::Warn
+        }
         ConflictKind::SelfPattern { severity, .. } => severity,
     }
 }
@@ -1980,7 +2006,11 @@ mod tests {
         let src = "# Loader.set_script(load(\"res://Scripts/Loader.gd\"))\nfunc f(): pass\n";
         let mut out = ModIntent::default();
         scan_source("X.gd", src, &mut out);
-        assert!(out.classic_patterns.is_empty(), "{:#?}", out.classic_patterns);
+        assert!(
+            out.classic_patterns.is_empty(),
+            "{:#?}",
+            out.classic_patterns
+        );
     }
 
     #[test]
@@ -1997,7 +2027,10 @@ mod tests {
         let mut out = ModIntent::default();
         scan_source("X.gd", src, &mut out);
         assert_eq!(out.classic_patterns.len(), 1);
-        assert_eq!(out.classic_patterns[0].pattern, ClassicPatternKind::ExtendsVanilla);
+        assert_eq!(
+            out.classic_patterns[0].pattern,
+            ClassicPatternKind::ExtendsVanilla
+        );
     }
 
     #[test]
@@ -2005,7 +2038,10 @@ mod tests {
         let src = r#"ProjectSettings.load_resource_pack("user://my.zip")"#;
         let mut out = ModIntent::default();
         scan_source("X.gd", src, &mut out);
-        assert_eq!(out.classic_patterns[0].pattern, ClassicPatternKind::LoadResourcePack);
+        assert_eq!(
+            out.classic_patterns[0].pattern,
+            ClassicPatternKind::LoadResourcePack
+        );
         assert_eq!(out.classic_patterns[0].severity, Severity::Hard);
     }
 
@@ -2046,7 +2082,8 @@ mod tests {
     script.take_over_path("res://Scripts/Database.gd")
     Database.set_script(script)
 "#;
-        let extra_db = "extends Resource\n\nfunc my_extra_method():\n\tpass\n\nfunc another():\n\tpass\n";
+        let extra_db =
+            "extends Resource\n\nfunc my_extra_method():\n\tpass\n\nfunc another():\n\tpass\n";
         let schema = schema_with(&[("Database.gd", &["_ready", "Save", "Load"])]);
         let intent = analyze_mod_with_schema(
             "mymod",
@@ -2100,10 +2137,18 @@ mod tests {
 
     #[test]
     fn detects_registry_collision() {
-        let a = analyze_mod("mod-a", [("a.gd", r#"_lib.register("items", "shared", payload_a)"#)]);
-        let b = analyze_mod("mod-b", [("b.gd", r#"_lib.register("items", "shared", payload_b)"#)]);
+        let a = analyze_mod(
+            "mod-a",
+            [("a.gd", r#"_lib.register("items", "shared", payload_a)"#)],
+        );
+        let b = analyze_mod(
+            "mod-b",
+            [("b.gd", r#"_lib.register("items", "shared", payload_b)"#)],
+        );
         let conflicts = detect_conflicts(&[a, b]);
-        let reg = conflicts.iter().find(|c| matches!(c.kind, ConflictKind::RegistryCollision { .. }));
+        let reg = conflicts
+            .iter()
+            .find(|c| matches!(c.kind, ConflictKind::RegistryCollision { .. }));
         assert!(reg.is_some(), "{conflicts:#?}");
         assert_eq!(reg.unwrap().participants.len(), 2);
     }
@@ -2114,18 +2159,28 @@ mod tests {
         let b = analyze_mod("b", [("b.gd", r#"_lib.register("items", "key_b", y)"#)]);
         let conflicts = detect_conflicts(&[a, b]);
         assert!(
-            !conflicts.iter().any(|c| matches!(c.kind, ConflictKind::RegistryCollision { .. })),
+            !conflicts
+                .iter()
+                .any(|c| matches!(c.kind, ConflictKind::RegistryCollision { .. })),
             "{conflicts:#?}",
         );
     }
 
     #[test]
     fn detects_replace_hook_collision() {
-        let a = analyze_mod("a", [("a.gd", r#"_lib.hook("interface-_ready", _on_ready_a)"#)]);
-        let b = analyze_mod("b", [("b.gd", r#"_lib.hook("interface-_ready", _on_ready_b)"#)]);
+        let a = analyze_mod(
+            "a",
+            [("a.gd", r#"_lib.hook("interface-_ready", _on_ready_a)"#)],
+        );
+        let b = analyze_mod(
+            "b",
+            [("b.gd", r#"_lib.hook("interface-_ready", _on_ready_b)"#)],
+        );
         let conflicts = detect_conflicts(&[a, b]);
         assert!(
-            conflicts.iter().any(|c| matches!(c.kind, ConflictKind::ReplaceHookCollision { .. })),
+            conflicts
+                .iter()
+                .any(|c| matches!(c.kind, ConflictKind::ReplaceHookCollision { .. })),
             "{conflicts:#?}",
         );
     }
@@ -2137,28 +2192,43 @@ mod tests {
         let b = analyze_mod("b", [("b.gd", r#"_lib.hook("interface-_ready-pre", b)"#)]);
         let conflicts = detect_conflicts(&[a, b]);
         assert!(
-            !conflicts.iter().any(|c| matches!(c.kind, ConflictKind::ReplaceHookCollision { .. })),
+            !conflicts
+                .iter()
+                .any(|c| matches!(c.kind, ConflictKind::ReplaceHookCollision { .. })),
             "pre hooks shouldn't collide as Replace: {conflicts:#?}",
         );
     }
 
     #[test]
     fn detects_duplicate_vanilla_swap() {
-        let a = analyze_mod("a", [("a.gd", r#"x.take_over_path("res://Scripts/Database.gd")"#)]);
-        let b = analyze_mod("b", [("b.gd", r#"y.take_over_path("res://Scripts/Database.gd")"#)]);
+        let a = analyze_mod(
+            "a",
+            [("a.gd", r#"x.take_over_path("res://Scripts/Database.gd")"#)],
+        );
+        let b = analyze_mod(
+            "b",
+            [("b.gd", r#"y.take_over_path("res://Scripts/Database.gd")"#)],
+        );
         let conflicts = detect_conflicts(&[a, b]);
         assert!(
-            conflicts.iter().any(|c| matches!(c.kind, ConflictKind::DuplicateVanillaSwap { .. })),
+            conflicts
+                .iter()
+                .any(|c| matches!(c.kind, ConflictKind::DuplicateVanillaSwap { .. })),
             "{conflicts:#?}",
         );
     }
 
     #[test]
     fn self_pattern_surfaces_for_hard_severity() {
-        let a = analyze_mod("a", [("a.gd", r#"x.take_over_path("res://Scripts/Database.gd")"#)]);
+        let a = analyze_mod(
+            "a",
+            [("a.gd", r#"x.take_over_path("res://Scripts/Database.gd")"#)],
+        );
         let conflicts = detect_conflicts(&[a]);
         assert!(
-            conflicts.iter().any(|c| matches!(c.kind, ConflictKind::SelfPattern { .. })),
+            conflicts
+                .iter()
+                .any(|c| matches!(c.kind, ConflictKind::SelfPattern { .. })),
             "{conflicts:#?}",
         );
     }
@@ -2167,10 +2237,15 @@ mod tests {
     fn self_pattern_skipped_for_info() {
         // A mod-internal `take_over_path` is Info; shouldn't show up
         // as a self-pattern conflict (too noisy, not actionable).
-        let a = analyze_mod("a", [("a.gd", r#"x.take_over_path("res://mods/a/foo.gd")"#)]);
+        let a = analyze_mod(
+            "a",
+            [("a.gd", r#"x.take_over_path("res://mods/a/foo.gd")"#)],
+        );
         let conflicts = detect_conflicts(&[a]);
         assert!(
-            !conflicts.iter().any(|c| matches!(c.kind, ConflictKind::SelfPattern { .. })),
+            !conflicts
+                .iter()
+                .any(|c| matches!(c.kind, ConflictKind::SelfPattern { .. })),
             "info-severity shouldn't surface as conflict: {conflicts:#?}",
         );
     }
@@ -2195,20 +2270,25 @@ mod tests {
         // But it shouldn't surface as a SelfPattern conflict.
         let conflicts = detect_conflicts(&[intent]);
         assert!(
-            !conflicts.iter().any(|c| matches!(c.kind, ConflictKind::SelfPattern { .. })),
+            !conflicts
+                .iter()
+                .any(|c| matches!(c.kind, ConflictKind::SelfPattern { .. })),
             "unknown-target finding shouldn't trigger conflict pill: {conflicts:#?}",
         );
     }
 
     #[test]
     fn collect_hooked_bases_strips_kind_suffix() {
-        let a = analyze_mod("a", [(
-            "a.gd",
-            r#"_lib.hook("interface-_ready-post", cb)
+        let a = analyze_mod(
+            "a",
+            [(
+                "a.gd",
+                r#"_lib.hook("interface-_ready-post", cb)
 _lib.hook("interface-close-pre", cb)
 _lib.hook("ai-death", cb)
 "#,
-        )]);
+            )],
+        );
         let bases = collect_hooked_method_bases(&[a]);
         assert!(bases.contains("interface-_ready"));
         assert!(bases.contains("interface-close"));
@@ -2230,14 +2310,17 @@ _lib.hook("ai-death", cb)
 
     #[test]
     fn collect_hooked_kinds_separates_each_kind() {
-        let a = analyze_mod("a", [(
-            "a.gd",
-            r#"_lib.hook("interface-_ready-pre", cb)
+        let a = analyze_mod(
+            "a",
+            [(
+                "a.gd",
+                r#"_lib.hook("interface-_ready-pre", cb)
 _lib.hook("interface-_ready-post", cb)
 _lib.hook("ai-death", cb)
 _lib.hook("compiler-spawn-callback", cb)
 "#,
-        )]);
+            )],
+        );
         let kinds = collect_hooked_method_kinds(&[a]);
         let intf = kinds.get("interface-_ready").expect("interface key");
         assert!(intf.pre);
@@ -2271,10 +2354,18 @@ _lib.hook("compiler-spawn-callback", cb)
         let empty = HookKindsPresent::default();
         assert!(empty.is_empty());
         assert!(!empty.is_full());
-        let full = HookKindsPresent { pre: true, post: true, callback: true, replace: true };
+        let full = HookKindsPresent {
+            pre: true,
+            post: true,
+            callback: true,
+            replace: true,
+        };
         assert!(!full.is_empty());
         assert!(full.is_full());
-        let partial = HookKindsPresent { pre: true, ..Default::default() };
+        let partial = HookKindsPresent {
+            pre: true,
+            ..Default::default()
+        };
         assert!(!partial.is_empty());
         assert!(!partial.is_full());
     }
@@ -2283,10 +2374,13 @@ _lib.hook("compiler-spawn-callback", cb)
 
     #[test]
     fn many_verb_register_many_counts_as_registry_intent() {
-        let m = analyze_mod("m", [(
-            "m.gd",
-            r#"_lib.register_many("items", {"a": data_a, "b": data_b})"#,
-        )]);
+        let m = analyze_mod(
+            "m",
+            [(
+                "m.gd",
+                r#"_lib.register_many("items", {"a": data_a, "b": data_b})"#,
+            )],
+        );
         assert_eq!(m.registry_writes.len(), 1);
         let w = &m.registry_writes[0];
         assert_eq!(w.verb, RegistryVerb::Register);
@@ -2296,11 +2390,14 @@ _lib.hook("compiler-spawn-callback", cb)
 
     #[test]
     fn many_verb_array_ops_carry_registry_name() {
-        let m = analyze_mod("m", [(
-            "m.gd",
-            r#"_lib.append_many("items", "compatible", {"AKM": [m1, m2]})
+        let m = analyze_mod(
+            "m",
+            [(
+                "m.gd",
+                r#"_lib.append_many("items", "compatible", {"AKM": [m1, m2]})
 _lib.remove_from_many("recipes", "ingredients", {"r1": [i1]})"#,
-        )]);
+            )],
+        );
         assert_eq!(m.registry_writes.len(), 2);
         let verbs: Vec<_> = m.registry_writes.iter().map(|w| w.verb).collect();
         assert!(verbs.contains(&RegistryVerb::Append));
@@ -2309,12 +2406,15 @@ _lib.remove_from_many("recipes", "ingredients", {"r1": [i1]})"#,
 
     #[test]
     fn aggregator_calls_recognized() {
-        let m = analyze_mod("m", [(
-            "m.gd",
-            r#"_lib.register_weapon({"AKM": {item_path = "..."}})
+        let m = analyze_mod(
+            "m",
+            [(
+                "m.gd",
+                r#"_lib.register_weapon({"AKM": {item_path = "..."}})
 _lib.register_ai_loadout({"AKM_Bandit": {weapon_scene = "AKM"}})
 _lib.register_furniture({"Table": {item_path = "..."}})"#,
-        )]);
+            )],
+        );
         assert_eq!(m.registry_writes.len(), 3);
         let kinds: Vec<&str> = m
             .registry_writes
@@ -2328,14 +2428,17 @@ _lib.register_furniture({"Table": {item_path = "..."}})"#,
 
     #[test]
     fn hook_many_emits_one_intent_per_dict_key() {
-        let m = analyze_mod("m", [(
-            "m.gd",
-            r#"_lib.hook_many({
+        let m = analyze_mod(
+            "m",
+            [(
+                "m.gd",
+                r#"_lib.hook_many({
     "interface-_ready-pre": _on_ready,
     "ai-changestate-post": _on_state,
     "controller-_physics_process-pre": _tick,
 })"#,
-        )]);
+            )],
+        );
         assert_eq!(m.hooks.len(), 3);
         let names: Vec<&str> = m
             .hooks
@@ -2349,14 +2452,17 @@ _lib.register_furniture({"Table": {item_path = "..."}})"#,
 
     #[test]
     fn setup_plan_primitive_verbs_become_intents() {
-        let m = analyze_mod("m", [(
-            "m.gd",
-            r#"_lib.setup([
+        let m = analyze_mod(
+            "m",
+            [(
+                "m.gd",
+                r#"_lib.setup([
     ["register", "items", {"my_item": data}],
     ["patch", "items", {"AKM": {damage = 200}}],
     ["override", "scenes", {"Potato": new_potato}],
 ])"#,
-        )]);
+            )],
+        );
         assert_eq!(m.registry_writes.len(), 3);
         // Make sure the verbs + registries came through correctly.
         let pairs: Vec<(RegistryVerb, &str)> = m
@@ -2371,13 +2477,16 @@ _lib.register_furniture({"Table": {item_path = "..."}})"#,
 
     #[test]
     fn setup_plan_aggregator_entries_recognized() {
-        let m = analyze_mod("m", [(
-            "m.gd",
-            r#"_lib.setup([
+        let m = analyze_mod(
+            "m",
+            [(
+                "m.gd",
+                r#"_lib.setup([
     ["register_weapon", {"AKM": {item_path = "..."}}],
     ["register_ai_loadout", {"AKM_Bandit": {weapon_scene = "AKM"}}],
 ])"#,
-        )]);
+            )],
+        );
         assert_eq!(m.registry_writes.len(), 2);
         let kinds: Vec<&str> = m
             .registry_writes
@@ -2390,15 +2499,18 @@ _lib.register_furniture({"Table": {item_path = "..."}})"#,
 
     #[test]
     fn setup_plan_hooks_block_emits_hook_intents() {
-        let m = analyze_mod("m", [(
-            "m.gd",
-            r#"_lib.setup([
+        let m = analyze_mod(
+            "m",
+            [(
+                "m.gd",
+                r#"_lib.setup([
     ["hooks", {
         "interface-_ready-post": _setup_ui,
         "ai-changestate-pre": _on_state,
     }],
 ])"#,
-        )]);
+            )],
+        );
         assert_eq!(m.hooks.len(), 2);
         let names: Vec<&str> = m
             .hooks
@@ -2411,14 +2523,17 @@ _lib.register_furniture({"Table": {item_path = "..."}})"#,
 
     #[test]
     fn setup_plan_when_block_recurses() {
-        let m = analyze_mod("m", [(
-            "m.gd",
-            r#"_lib.setup([
+        let m = analyze_mod(
+            "m",
+            [(
+                "m.gd",
+                r#"_lib.setup([
     ["when", true, [
         ["register", "items", {"conditional_item": data}],
     ]],
 ])"#,
-        )]);
+            )],
+        );
         // The inner register entry should be picked up despite being
         // wrapped in a when-block.
         assert_eq!(m.registry_writes.len(), 1);

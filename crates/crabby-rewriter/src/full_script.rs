@@ -573,7 +573,10 @@ func ApplyDamage(dmg: float) -> void:
             std::collections::HashMap::new();
         map.insert(
             "hitbox-applydamage".into(),
-            crate::HookFlags { pre: true, ..Default::default() },
+            crate::HookFlags {
+                pre: true,
+                ..Default::default()
+            },
         );
         let out = rewrite_full_script_with_hooks(src, &parsed, Some(&map)).unwrap();
         // Wrapper emitted (rename happened, dispatcher present).

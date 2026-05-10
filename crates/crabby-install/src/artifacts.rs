@@ -76,24 +76,78 @@ pub const LIB_AUTOLOAD_NAME: &str = "Lib";
 const LIB_FRAGMENTS: &[(&str, &str)] = &[
     ("lib.gd", include_str!("../../../shim/lib/lib.gd")),
     ("boot.gd", include_str!("../../../shim/lib/boot.gd")),
-    ("registry/shared.gd", include_str!("../../../shim/registry/shared.gd")),
-    ("registry/api.gd", include_str!("../../../shim/registry/api.gd")),
-    ("registry/aggregators.gd", include_str!("../../../shim/registry/aggregators.gd")),
-    ("registry/ai.gd", include_str!("../../../shim/registry/ai.gd")),
-    ("registry/ai_loadouts.gd", include_str!("../../../shim/registry/ai_loadouts.gd")),
-    ("registry/events.gd", include_str!("../../../shim/registry/events.gd")),
-    ("registry/fish.gd", include_str!("../../../shim/registry/fish.gd")),
-    ("registry/inputs.gd", include_str!("../../../shim/registry/inputs.gd")),
-    ("registry/items.gd", include_str!("../../../shim/registry/items.gd")),
-    ("registry/loader.gd", include_str!("../../../shim/registry/loader.gd")),
-    ("registry/loot.gd", include_str!("../../../shim/registry/loot.gd")),
-    ("registry/recipes.gd", include_str!("../../../shim/registry/recipes.gd")),
-    ("registry/resources.gd", include_str!("../../../shim/registry/resources.gd")),
-    ("registry/scene_nodes.gd", include_str!("../../../shim/registry/scene_nodes.gd")),
-    ("registry/scenes.gd", include_str!("../../../shim/registry/scenes.gd")),
-    ("registry/sounds.gd", include_str!("../../../shim/registry/sounds.gd")),
-    ("registry/traders.gd", include_str!("../../../shim/registry/traders.gd")),
-    ("registry/setup.gd", include_str!("../../../shim/registry/setup.gd")),
+    (
+        "registry/shared.gd",
+        include_str!("../../../shim/registry/shared.gd"),
+    ),
+    (
+        "registry/api.gd",
+        include_str!("../../../shim/registry/api.gd"),
+    ),
+    (
+        "registry/aggregators.gd",
+        include_str!("../../../shim/registry/aggregators.gd"),
+    ),
+    (
+        "registry/ai.gd",
+        include_str!("../../../shim/registry/ai.gd"),
+    ),
+    (
+        "registry/ai_loadouts.gd",
+        include_str!("../../../shim/registry/ai_loadouts.gd"),
+    ),
+    (
+        "registry/events.gd",
+        include_str!("../../../shim/registry/events.gd"),
+    ),
+    (
+        "registry/fish.gd",
+        include_str!("../../../shim/registry/fish.gd"),
+    ),
+    (
+        "registry/inputs.gd",
+        include_str!("../../../shim/registry/inputs.gd"),
+    ),
+    (
+        "registry/items.gd",
+        include_str!("../../../shim/registry/items.gd"),
+    ),
+    (
+        "registry/loader.gd",
+        include_str!("../../../shim/registry/loader.gd"),
+    ),
+    (
+        "registry/loot.gd",
+        include_str!("../../../shim/registry/loot.gd"),
+    ),
+    (
+        "registry/recipes.gd",
+        include_str!("../../../shim/registry/recipes.gd"),
+    ),
+    (
+        "registry/resources.gd",
+        include_str!("../../../shim/registry/resources.gd"),
+    ),
+    (
+        "registry/scene_nodes.gd",
+        include_str!("../../../shim/registry/scene_nodes.gd"),
+    ),
+    (
+        "registry/scenes.gd",
+        include_str!("../../../shim/registry/scenes.gd"),
+    ),
+    (
+        "registry/sounds.gd",
+        include_str!("../../../shim/registry/sounds.gd"),
+    ),
+    (
+        "registry/traders.gd",
+        include_str!("../../../shim/registry/traders.gd"),
+    ),
+    (
+        "registry/setup.gd",
+        include_str!("../../../shim/registry/setup.gd"),
+    ),
 ];
 
 /// Assembled Lib source, lazily built on first access. Concatenates
@@ -101,9 +155,8 @@ const LIB_FRAGMENTS: &[(&str, &str)] = &[
 /// banner before each so anyone reading the installed file (e.g. via
 /// the `dump_shim` example) can trace any line back to its source.
 pub static LIB_SOURCE: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    let mut out = String::with_capacity(
-        LIB_FRAGMENTS.iter().map(|(_, s)| s.len()).sum::<usize>() + 256,
-    );
+    let mut out =
+        String::with_capacity(LIB_FRAGMENTS.iter().map(|(_, s)| s.len()).sum::<usize>() + 256);
     for (i, (name, body)) in LIB_FRAGMENTS.iter().enumerate() {
         if i > 0 {
             while out.ends_with("\n\n") {
