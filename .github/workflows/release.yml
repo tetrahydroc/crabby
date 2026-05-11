@@ -7,9 +7,12 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
-# A release is created with the tag `v<cargo-version>-<short-sha>`.
-# Only one release runs at a time per branch so concurrent pushes don't
-# race on tag creation.
+# The tag is plain `v<workspace.package.version>`. Patch is a global
+# monotonic counter (see scripts/prepare-release.sh) so every version
+# string occurred exactly once, no SHA suffix needed.
+#
+# Only one release runs at a time per branch so concurrent pushes
+# don't race on tag creation.
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -18,30 +21,47 @@ permissions:
   contents: write
 
 jobs:
-  # Resolve the version + tag once, share with both build jobs.
   resolve-version:
     name: resolve version
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.derive.outputs.version }}
       tag: ${{ steps.derive.outputs.tag }}
+      already_released: ${{ steps.derive.outputs.already_released }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Derive version + tag
         id: derive
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Cargo.toml's [workspace.package] version drives every crate.
           version=$(grep -m1 '^version' Cargo.toml | sed -E 's/version *= *"([^"]+)".*/\1/')
-          short_sha=$(git rev-parse --short HEAD)
-          tag="v${version}-${short_sha}"
+          tag="v${version}"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "Resolved version=${version} tag=${tag}"
+
+          # If the tag already exists (e.g. master push from a docs-only
+          # merge that didn't bump the version), skip the release. The
+          # workflow still runs but the build job exits early.
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            echo "already_released=true" >> "$GITHUB_OUTPUT"
+            echo "Tag $tag already exists; will skip release."
+          elif gh release view "$tag" >/dev/null 2>&1; then
+            echo "already_released=true" >> "$GITHUB_OUTPUT"
+            echo "Release $tag already published; will skip."
+          else
+            echo "already_released=false" >> "$GITHUB_OUTPUT"
+            echo "Resolved version=${version} tag=${tag}"
+          fi
 
   build:
     name: build (${{ matrix.os }})
     needs: resolve-version
+    if: needs.resolve-version.outputs.already_released != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -99,6 +119,7 @@ jobs:
   publish:
     name: publish release
     needs: [resolve-version, build]
+    if: needs.resolve-version.outputs.already_released != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -108,25 +129,57 @@ jobs:
         with:
           path: artifacts
 
+      - name: Build release body
+        id: body
+        run: |
+          body_file="$(mktemp)"
+          # Prefer the rendered changelog produced by prepare-release.sh
+          # (committed to dev at .github/changelog/<version>.md during the
+          # version bump and carried into master by the merge). Each
+          # release owns its own immutable file; release.yml looks up
+          # exactly the current version. Fall back to a stub when the
+          # file is absent (e.g. first manual release, or a force-tagged
+          # release that bypassed prepare-release).
+          notes_path=".github/changelog/${{ needs.resolve-version.outputs.version }}.md"
+          if [[ -f "$notes_path" ]]; then
+            cat "$notes_path" >> "$body_file"
+            echo "" >> "$body_file"
+            echo "---" >> "$body_file"
+            echo "" >> "$body_file"
+          else
+            echo "## crabby ${{ needs.resolve-version.outputs.tag }}" >> "$body_file"
+            echo "" >> "$body_file"
+            echo "Built from \`master\` at commit ${{ github.sha }}." >> "$body_file"
+            echo "" >> "$body_file"
+          fi
+          echo "## Downloads" >> "$body_file"
+          echo "" >> "$body_file"
+          echo "- **Windows**: \`crabby-windows-x86_64.zip\`" >> "$body_file"
+          echo "- **Linux**: \`crabby-linux-x86_64.tar.gz\`" >> "$body_file"
+          echo "" >> "$body_file"
+          echo "See [README](https://github.com/${{ github.repository }}/blob/${{ github.sha }}/README.md) for install steps." >> "$body_file"
+          echo "body_file=${body_file}" >> "$GITHUB_OUTPUT"
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.resolve-version.outputs.tag }}
           name: ${{ needs.resolve-version.outputs.tag }}
-          body: |
-            Automated release for commit ${{ github.sha }}.
-
-            Built from `master` at workspace version `${{ needs.resolve-version.outputs.version }}`.
-
-            ## Downloads
-
-            - **Windows**: `crabby-windows-x86_64.zip`
-            - **Linux**: `crabby-linux-x86_64.tar.gz`
-
-            See [README](https://github.com/${{ github.repository }}/blob/${{ github.sha }}/README.md) for install steps.
+          body_path: ${{ steps.body.outputs.body_file }}
           files: |
             artifacts/crabby-linux-x86_64/crabby-linux-x86_64.tar.gz
             artifacts/crabby-windows-x86_64/crabby-windows-x86_64.zip
           draft: false
           prerelease: true
           fail_on_unmatched_files: true
+
+  noop:
+    name: skip release (no version bump)
+    needs: resolve-version
+    if: needs.resolve-version.outputs.already_released == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log skip
+        run: |
+          echo "Tag ${{ needs.resolve-version.outputs.tag }} already exists; nothing to release." >> "$GITHUB_STEP_SUMMARY"
+          echo "This usually means the master push was a docs/ci/style-only merge that didn't bump the version. The prepare-release workflow on the PR will have reflected this." >> "$GITHUB_STEP_SUMMARY"
