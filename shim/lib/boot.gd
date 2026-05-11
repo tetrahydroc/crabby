@@ -669,7 +669,7 @@ func _instantiate_one_autoload(mod_id: String, autoload_name: String, res_path: 
 			push_error("[Lib] %s: PackedScene.instantiate returned null for %s" % [mod_id, autoload_name])
 			return false
 		inst.name = autoload_name
-		# Defer the add: at this point the engine is mid-way through the
+		# Defer the add. At this point the engine is mid-way through the
 		# autoload chain and /root is "busy setting up children", so a
 		# direct add_child errors. Deferring runs the add on the next
 		# idle frame, which is also when vanilla autoloads land.
@@ -679,14 +679,14 @@ func _instantiate_one_autoload(mod_id: String, autoload_name: String, res_path: 
 	if resource is GDScript:
 		var gds := resource as GDScript
 		if not gds.can_instantiate():
-			push_error("[Lib] %s: autoload %s script can't instantiate (parse error?)" % [mod_id, autoload_name])
+			push_error("[Lib] %s: autoload %s script can't instantiate at %s (parse error?)" % [mod_id, autoload_name, res_path])
 			return false
 		var inst: Variant = gds.new()
 		if inst == null:
-			push_warning("[Lib] %s: autoload %s .new() returned null" % [mod_id, autoload_name])
+			push_warning("[Lib] %s: autoload %s .new() returned null at %s" % [mod_id, autoload_name, res_path])
 			return false
 		if not (inst is Node):
-			push_warning("[Lib] %s: autoload %s is not a Node, not added to tree" % [mod_id, autoload_name])
+			push_warning("[Lib] %s: autoload %s is not a Node at %s, not added to tree" % [mod_id, autoload_name, res_path])
 			return false
 		(inst as Node).name = autoload_name
 		get_tree().root.add_child.call_deferred(inst as Node)
