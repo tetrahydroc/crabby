@@ -1,8 +1,16 @@
 name: ci
 
 on:
+  # Only `master` for push, not `development`. A commit landing on dev
+  # already went through CI via its source PR (pull_request event), and
+  # the open dev->master PR triggers a synchronize event for the same
+  # commit, so a push trigger on dev would produce a third run for
+  # work that's already been checked twice. Master push covers the
+  # post-merge verification: the only way a commit reaches master is
+  # via merging the dev->master PR, and we want CI green on master at
+  # all times.
   push:
-    branches: [master, development]
+    branches: [master]
   pull_request:
 
 env:
