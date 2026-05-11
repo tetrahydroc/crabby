@@ -53,12 +53,33 @@ jobs:
         run: |
           # Tag the bot commits with a recognizable identity. The
           # script (prepare-release.sh) skips commits matching this
-          # author when computing future bumps so the version-bump
-          # commit doesn't double-count itself.
+          # subject shape when computing future bumps so the version-
+          # bump commit doesn't double-count itself.
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      - name: Bail if HEAD is our own bump commit
+        id: head_check
+        # The workflow's own push to `development` triggers a fresh
+        # `pull_request.synchronize` event, re-running this workflow.
+        # If the HEAD of development is the bot's `chore(release): bump
+        # version to X.Y.Z` commit, the previous run already did the
+        # work; bail before doing anything else. Belt-and-suspenders
+        # against the filter inside the script: if both guards fail
+        # simultaneously we'd loop, so the workflow stops here on the
+        # second cycle regardless.
+        run: |
+          head_subject=$(git log -1 --format=%s HEAD)
+          echo "HEAD subject: $head_subject"
+          if [[ "$head_subject" =~ ^chore\(release\):[[:space:]]+bump\ version\ to\ [0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "HEAD is our own bump commit; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Compute version + render changelog
+        if: steps.head_check.outputs.skip != 'true'
         id: prep
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
@@ -72,7 +93,7 @@ jobs:
       - name: Commit version bump to development
         # Only fires when the script actually edited Cargo.toml (i.e.
         # bump != none). Skips for docs/ci/style-only batches.
-        if: steps.prep.outputs.bump != 'none'
+        if: steps.head_check.outputs.skip != 'true' && steps.prep.outputs.bump != 'none'
         run: |
           if git diff --quiet Cargo.toml; then
             echo "Cargo.toml unchanged; nothing to commit"
@@ -87,6 +108,7 @@ jobs:
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
 
       - name: Update PR description with rendered changelog
+        if: steps.head_check.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -125,6 +147,7 @@ jobs:
           gh pr edit "$PR_NUMBER" --body-file "$body_file"
 
       - name: Summary
+        if: steps.head_check.outputs.skip != 'true'
         run: |
           echo "### Release preparation" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
