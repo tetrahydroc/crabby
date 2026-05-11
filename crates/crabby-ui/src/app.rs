@@ -28,7 +28,16 @@ use crate::tabs::{Tab, diagnostics, logs, mods, profiles, saves, settings};
 use crate::theme::CrabbyTheme;
 
 /// Crabby version embedded at compile time. Shown on the status bar.
-pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Re-exported from `crabby-install` so the launcher and the in-PCK
+/// `Lib.gd` (also assembled by crabby-install) share one source of
+/// truth.
+pub const APP_VERSION: &str = crabby_install::BUILD_VERSION;
+
+/// Short git SHA at compile time, see `crabby_install::BUILD_GIT_SHA`.
+pub const BUILD_GIT_SHA: &str = crabby_install::BUILD_GIT_SHA;
+
+/// ISO 8601 UTC build timestamp, see `crabby_install::BUILD_TIME`.
+pub const BUILD_TIME: &str = crabby_install::BUILD_TIME;
 
 /// MW game id for Road to Vostok. Hard-coded since only one game is
 /// targeted; multi-game support will thread this through state /

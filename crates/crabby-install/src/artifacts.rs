@@ -173,5 +173,15 @@ pub static LIB_SOURCE: std::sync::LazyLock<String> = std::sync::LazyLock::new(||
     if !out.ends_with('\n') {
         out.push('\n');
     }
+    // Substitute the build identifying triple into Lib.gd's
+    // placeholder consts. The shim ships the placeholders verbatim so
+    // a stray local edit of lib.gd doesn't break GDScript syntax;
+    // here we replace them with the actual values from build.rs.
+    // Mods read these via `Lib.version()` / `Lib.build_sha()` /
+    // `Lib.build_time()`.
+    out = out
+        .replace("@@CRABBY_VERSION@@", crate::BUILD_VERSION)
+        .replace("@@CRABBY_BUILD_SHA@@", crate::BUILD_GIT_SHA)
+        .replace("@@CRABBY_BUILD_TIME@@", crate::BUILD_TIME);
     out
 });

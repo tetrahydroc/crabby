@@ -207,6 +207,10 @@ impl State {
             text("Click Refresh to load.").size(12).color(p.fg_3).into()
         } else {
             let mut col = column![
+                eyebrow("BUILD"),
+                kv_row("Launcher version", crate::app::APP_VERSION.to_string()),
+                kv_row("Git commit", crate::app::BUILD_GIT_SHA.to_string()),
+                kv_row("Build time", crate::app::BUILD_TIME.to_string()),
                 eyebrow("PATHS"),
                 kv_row("Game dir", s.game_dir.clone().unwrap_or_else(|| "—".into())),
                 kv_row(

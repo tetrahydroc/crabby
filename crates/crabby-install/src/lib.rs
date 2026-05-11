@@ -39,6 +39,23 @@ mod override_cfg;
 mod pck_backup;
 mod uninstall;
 
+/// Crabby workspace version (`Cargo.toml`'s `[workspace.package]
+/// version`). The launcher's status bar + diagnostics, the in-PCK
+/// `Lib.gd`'s `CRABBY_VERSION`, and `Lib.version()` all read this.
+pub const BUILD_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Short git SHA at compile time (with `-dirty` suffix when the
+/// working tree had uncommitted changes). `unknown` when git wasn't
+/// available at build time. Surfaced on the Diagnostics tab and on
+/// `Lib.build_sha()` so bug reporters and mods can identify the
+/// exact build. Source: `crates/crabby-install/build.rs`.
+pub const BUILD_GIT_SHA: &str = env!("CRABBY_GIT_SHA");
+
+/// ISO 8601 UTC timestamp captured when crabby-install was compiled.
+/// Same surface as `BUILD_GIT_SHA`; pairs with it on Diagnostics +
+/// `Lib.build_time()`.
+pub const BUILD_TIME: &str = env!("CRABBY_BUILD_TIME");
+
 pub use artifacts::{
     HOOK_PACK_FILE_NAME, LEGACY_SHIM_FILE_NAME, LIB_SOURCE, MANIFEST_DIR, VANILLA_PCK_BACKUP_NAME,
     VANILLA_PCK_NAME,
