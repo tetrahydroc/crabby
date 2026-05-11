@@ -35,7 +35,7 @@ mod discover;
 
 pub use discover::{
     BootScan, analyze_active_profile, analyze_active_profile_with_schema, analyze_enabled_mods,
-    one_line_summary, read_mod_scripts, scan_active_profile,
+    one_line_summary, read_mod_file_bytes, read_mod_scripts, scan_active_profile,
 };
 
 use std::sync::LazyLock;
@@ -53,9 +53,13 @@ pub struct ModIntent {
     pub hooks: Vec<HookIntent>,
     /// Registry calls (register / override / patch / append / etc.).
     pub registry_writes: Vec<RegistryWriteIntent>,
+    /// Overlay writes (replace_file / add_file). Mods using these
+    /// participate in the bake pipeline by replacing or adding PCK
+    /// entries before the rewriter runs.
+    pub overlay_writes: Vec<OverlayWriteIntent>,
     /// Classic Godot mod patterns worth flagging.
     pub classic_patterns: Vec<ClassicPattern>,
-    /// Per-file file-name → line-count, for context in the report.
+    /// Per-file file-name -> line-count, for context in the report.
     pub files_scanned: Vec<ScannedFile>,
 }
 
@@ -174,6 +178,72 @@ impl RegistryVerb {
             _ => return None,
         })
     }
+}
+
+/// One `Lib.setup` overlay verb: a bake-time edit to the PCK that
+/// replaces or adds a file at a `res://` path. Distinct from
+/// [`RegistryVerb`] because overlays operate on PCK entry paths, not
+/// on `(registry, key)` pairs, and are applied by the bake pipeline
+/// rather than the runtime registry handlers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OverlayVerb {
+    /// `replace_file`, swap a vanilla PCK entry's bytes wholesale.
+    /// Single-owner per path: two mods replacing the same path is a
+    /// hard conflict.
+    ReplaceFile,
+    /// `add_file`, introduce a new PCK entry at a path vanilla
+    /// doesn't have. Two mods adding the same path is a hard conflict;
+    /// adding a path vanilla already has is also a conflict (use
+    /// `replace_file` instead).
+    AddFile,
+}
+
+impl OverlayVerb {
+    fn from_str(s: &str) -> Option<Self> {
+        Some(match s {
+            "replace_file" => Self::ReplaceFile,
+            "add_file" => Self::AddFile,
+            _ => return None,
+        })
+    }
+
+    /// Snake-case verb spelling, matching the setup-plan literal.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ReplaceFile => "replace_file",
+            Self::AddFile => "add_file",
+        }
+    }
+}
+
+/// One `Lib.setup(...)` overlay-verb call. Carries the target PCK path
+/// and the source-of-bytes path inside the mod archive.
+///
+/// Both paths are the `res://...` literals as the mod author wrote
+/// them. The bake pipeline resolves `source_path` against the mod's
+/// own root, reads the bytes, and applies them at `target_path`.
+#[derive(Debug, Clone)]
+pub struct OverlayWriteIntent {
+    /// File where the call is (mod-relative, e.g. `main.gd`).
+    pub filename: String,
+    /// 1-based line number of the call inside `filename`.
+    pub line: usize,
+    /// Which overlay verb was used.
+    pub verb: OverlayVerb,
+    /// Target PCK path the edit applies to (e.g.
+    /// `"res://Scripts/Player.gd"`). `None` when the literal couldn't
+    /// be parsed (computed string, runtime concatenation, etc.) - the
+    /// bake skips these and the analyzer flags them.
+    pub target_path: Option<String>,
+    /// Mod-archive-relative source path supplying the replacement
+    /// bytes (e.g. `"res://overlays/Player.gd"`). `None` for the same
+    /// reason as `target_path`.
+    pub source_path: Option<String>,
+    /// Resolvability classification. Always `Static` today since the
+    /// scanner only matches literal-string args; non-literal args
+    /// produce no intent at all.
+    pub resolvability: Resolvability,
 }
 
 /// One classic Godot mod pattern that fights crabby's substrate.
@@ -685,6 +755,12 @@ fn scan_setup_plan(filename: &str, source: &str, start: usize, end: usize, out: 
     // string slot for primitive verbs.
     static SETUP_SECOND_STR: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r#"^,\s*"([^"]+)""#).expect("SETUP_SECOND_STR regex"));
+    // Two-arg literal-string capture for verbs like
+    // `["replace_file", "res://target", "res://source"]`. Captures
+    // both string slots in order.
+    static SETUP_TWO_STRS: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"^,\s*"([^"]+)"\s*,\s*"([^"]+)""#).expect("SETUP_TWO_STRS regex")
+    });
 
     let body = &source[start..end];
     for cap in SETUP_ENTRY.captures_iter(body) {
@@ -770,6 +846,33 @@ fn scan_setup_plan(filename: &str, source: &str, start: usize, end: usize, out: 
                         }
                     }
                 }
+            }
+            // ["replace_file", "res://target", "res://source"] or
+            // ["add_file", "res://target", "res://source"]. Both have
+            // the same shape: two literal string args, applied at bake
+            // time before the rewriter runs.
+            "replace_file" | "add_file" => {
+                let after_verb = &body[cap.get(0).unwrap().end()..];
+                let (target_path, source_path) = SETUP_TWO_STRS
+                    .captures(after_verb)
+                    .map(|c| {
+                        (
+                            c.get(1).map(|m| m.as_str().to_string()),
+                            c.get(2).map(|m| m.as_str().to_string()),
+                        )
+                    })
+                    .unwrap_or((None, None));
+                let Some(overlay_verb) = OverlayVerb::from_str(verb) else {
+                    continue;
+                };
+                out.overlay_writes.push(OverlayWriteIntent {
+                    filename: filename.to_string(),
+                    line,
+                    verb: overlay_verb,
+                    target_path,
+                    source_path,
+                    resolvability: Resolvability::Static,
+                });
             }
             // ["when", predicate, sub_plan] -- no-op for the
             // analyzer. The SETUP_ENTRY regex is depth-agnostic, so
@@ -1446,6 +1549,18 @@ pub enum ConflictKind {
         /// Vanilla path being swapped (e.g. `res://Scripts/Database.gd`).
         target: String,
     },
+    /// Two or more mods declared `replace_file` on the same target
+    /// PCK path. File-level replacement is single-owner per path.
+    FileReplaceCollision {
+        /// Target PCK path (e.g. `"res://Scripts/Player.gd"`).
+        target: String,
+    },
+    /// Two or more mods declared `add_file` for the same new PCK
+    /// path. New-file paths are single-owner per path.
+    AddFileCollision {
+        /// New path the mods are fighting over.
+        target: String,
+    },
     /// Single-mod finding worth surfacing, a Hard or Warn classic
     /// pattern. Reuses the conflict surface so the UI has one channel
     /// to show "things wrong with this mod."
@@ -1659,6 +1774,65 @@ pub fn detect_conflicts(intents: &[ModIntent]) -> Vec<Conflict> {
         }
     }
 
+    // Overlay collisions: bucket replace_file and add_file by target
+    // path. Each verb is single-owner per path - two mods touching the
+    // same path is a hard conflict, since the bake can only apply one.
+    let mut replace_buckets: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+    let mut add_buckets: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+    for intent in intents {
+        for w in &intent.overlay_writes {
+            let Some(target) = w.target_path.as_deref() else {
+                continue;
+            };
+            let bucket = match w.verb {
+                OverlayVerb::ReplaceFile => &mut replace_buckets,
+                OverlayVerb::AddFile => &mut add_buckets,
+            };
+            bucket
+                .entry(target.to_string())
+                .or_default()
+                .push((intent.mod_id.clone(), format!("{}:{}", w.filename, w.line)));
+        }
+    }
+    for (target, mods) in replace_buckets {
+        if mods.len() < 2 {
+            continue;
+        }
+        out.push(Conflict {
+            kind: ConflictKind::FileReplaceCollision {
+                target: target.clone(),
+            },
+            headline: format!("{} mods declare `replace_file` on `{}`", mods.len(), target),
+            participants: mods
+                .into_iter()
+                .map(|(mid, cs)| ConflictParticipant {
+                    mod_id: mid,
+                    callsite: cs,
+                    detail: format!("replace_file({target})"),
+                })
+                .collect(),
+        });
+    }
+    for (target, mods) in add_buckets {
+        if mods.len() < 2 {
+            continue;
+        }
+        out.push(Conflict {
+            kind: ConflictKind::AddFileCollision {
+                target: target.clone(),
+            },
+            headline: format!("{} mods declare `add_file` on `{}`", mods.len(), target),
+            participants: mods
+                .into_iter()
+                .map(|(mid, cs)| ConflictParticipant {
+                    mod_id: mid,
+                    callsite: cs,
+                    detail: format!("add_file({target})"),
+                })
+                .collect(),
+        });
+    }
+
     out
 }
 
@@ -1850,7 +2024,9 @@ where
 /// arbitration. SelfPattern reports its own severity.
 fn severity_of(c: &Conflict) -> Severity {
     match c.kind {
-        ConflictKind::DuplicateVanillaSwap { .. } => Severity::Hard,
+        ConflictKind::DuplicateVanillaSwap { .. }
+        | ConflictKind::FileReplaceCollision { .. }
+        | ConflictKind::AddFileCollision { .. } => Severity::Hard,
         ConflictKind::RegistryCollision { .. } | ConflictKind::ReplaceHookCollision { .. } => {
             Severity::Warn
         }
@@ -2540,6 +2716,267 @@ _lib.register_furniture({"Table": {item_path = "..."}})"#,
         let w = &m.registry_writes[0];
         assert_eq!(w.verb, RegistryVerb::Register);
         assert_eq!(w.registry.as_deref(), Some("items"));
+    }
+
+    #[test]
+    fn setup_plan_overlay_verbs_dont_lose_replace_when_other_files_present() {
+        // Regression: in a real bake the analyzer reported add_file=1
+        // but replace_file=0 for the overlay-test mod. The mod ships
+        // three .gd files (main.gd, overlays/Item.gd,
+        // overlays/OverlayTestHelper.gd). analyze_mod sees ALL of
+        // them. Confirm that the overlay verbs in main.gd survive
+        // when the analyzer also scans the overlay scripts.
+        let main_gd = r#"extends Node
+
+func _ready() -> void:
+    Lib.setup([
+        ["replace_file", "res://Scripts/Item.gd", "res://overlays/Item.gd"],
+        ["add_file", "res://overlays/OverlayTestHelper.gd", "res://overlays/OverlayTestHelper.gd"],
+    ])
+"#;
+        // A vanilla-shaped Item.gd, big and full of unrelated code.
+        let vanilla_item_like = r#"extends Control
+class_name Item
+
+@export var slotData: SlotData
+var interface = null
+var dragging = false
+var size = 0
+var name = ""
+
+func Initialize(source, data):
+    interface = source
+    slotData.Update(data)
+    name = slotData.itemData.file
+    size = slotData.itemData.size * 64
+
+func Value() -> int:
+    var value = slotData.itemData.value
+    return int(roundf(value))
+"#;
+        let helper_gd = r#"extends RefCounted
+func status() -> String:
+    return "alive"
+"#;
+        let m = analyze_mod(
+            "crabby-overlay-test",
+            [
+                ("main.gd", main_gd),
+                ("overlays/Item.gd", vanilla_item_like),
+                ("overlays/OverlayTestHelper.gd", helper_gd),
+            ],
+        );
+        let by_verb: std::collections::HashMap<OverlayVerb, &OverlayWriteIntent> =
+            m.overlay_writes.iter().map(|w| (w.verb, w)).collect();
+        assert!(
+            by_verb.contains_key(&OverlayVerb::ReplaceFile),
+            "replace_file dropped when overlay scripts also scanned. overlay_writes = {:?}",
+            m.overlay_writes,
+        );
+        assert!(
+            by_verb.contains_key(&OverlayVerb::AddFile),
+            "add_file dropped. overlay_writes = {:?}",
+            m.overlay_writes,
+        );
+    }
+
+    #[test]
+    fn setup_plan_overlay_verbs_match_real_test_mod_layout() {
+        // Regression: replace_file was reported as "0 replaced" in
+        // a real bake even though add_file came through as 1. Test
+        // against the exact source layout the test mod ships with
+        // (preceding comments, indentation, multi-line plan).
+        let m = analyze_mod(
+            "crabby-overlay-test",
+            [(
+                "main.gd",
+                r#"# crabby-overlay-test: exercises both overlay verbs end-to-end.
+#
+# Comment block above setup() sometimes throws regex matchers off.
+extends Node
+
+func _ready() -> void:
+    Lib.setup([
+        ["replace_file", "res://Scripts/Item.gd", "res://overlays/Item.gd"],
+        ["add_file", "res://overlays/OverlayTestHelper.gd", "res://overlays/OverlayTestHelper.gd"],
+    ])
+"#,
+            )],
+        );
+        let by_verb: std::collections::HashMap<OverlayVerb, &OverlayWriteIntent> =
+            m.overlay_writes.iter().map(|w| (w.verb, w)).collect();
+        assert!(
+            by_verb.contains_key(&OverlayVerb::ReplaceFile),
+            "replace_file not detected in test-mod-shaped source. overlay_writes = {:?}",
+            m.overlay_writes,
+        );
+        assert!(
+            by_verb.contains_key(&OverlayVerb::AddFile),
+            "add_file not detected. overlay_writes = {:?}",
+            m.overlay_writes,
+        );
+    }
+
+    #[test]
+    fn setup_plan_overlay_verbs_become_intents() {
+        let m = analyze_mod(
+            "m",
+            [(
+                "m.gd",
+                r#"_lib.setup([
+    ["replace_file", "res://Scripts/Player.gd", "res://overlays/Player.gd"],
+    ["add_file", "res://Scripts/CoopSync.gd", "res://overlays/CoopSync.gd"],
+])"#,
+            )],
+        );
+        assert_eq!(m.overlay_writes.len(), 2);
+
+        let by_verb: std::collections::HashMap<OverlayVerb, &OverlayWriteIntent> =
+            m.overlay_writes.iter().map(|w| (w.verb, w)).collect();
+
+        let replace = by_verb
+            .get(&OverlayVerb::ReplaceFile)
+            .expect("replace_file intent");
+        assert_eq!(
+            replace.target_path.as_deref(),
+            Some("res://Scripts/Player.gd")
+        );
+        assert_eq!(
+            replace.source_path.as_deref(),
+            Some("res://overlays/Player.gd")
+        );
+
+        let add = by_verb.get(&OverlayVerb::AddFile).expect("add_file intent");
+        assert_eq!(
+            add.target_path.as_deref(),
+            Some("res://Scripts/CoopSync.gd")
+        );
+        assert_eq!(
+            add.source_path.as_deref(),
+            Some("res://overlays/CoopSync.gd")
+        );
+    }
+
+    #[test]
+    fn setup_plan_overlay_verb_with_non_literal_args_skips_silently() {
+        // The scanner only matches literal-string args. A computed
+        // target path produces no intent, mirroring how registry verbs
+        // with non-literal keys behave.
+        let m = analyze_mod(
+            "m",
+            [(
+                "m.gd",
+                r#"_lib.setup([
+    ["replace_file", target_var, "res://overlays/Player.gd"],
+])"#,
+            )],
+        );
+        // Verb still recognized, but with both paths as None since the
+        // two-string capture failed.
+        assert_eq!(m.overlay_writes.len(), 1);
+        assert_eq!(m.overlay_writes[0].verb, OverlayVerb::ReplaceFile);
+        assert_eq!(m.overlay_writes[0].target_path, None);
+        assert_eq!(m.overlay_writes[0].source_path, None);
+    }
+
+    #[test]
+    fn detect_conflicts_replace_file_collision() {
+        let a = analyze_mod(
+            "a",
+            [(
+                "a.gd",
+                r#"_lib.setup([
+    ["replace_file", "res://Scripts/Player.gd", "res://a/Player.gd"],
+])"#,
+            )],
+        );
+        let b = analyze_mod(
+            "b",
+            [(
+                "b.gd",
+                r#"_lib.setup([
+    ["replace_file", "res://Scripts/Player.gd", "res://b/Player.gd"],
+])"#,
+            )],
+        );
+        let c = analyze_mod(
+            "c",
+            [(
+                "c.gd",
+                r#"_lib.setup([
+    ["replace_file", "res://Scripts/Other.gd", "res://c/Other.gd"],
+])"#,
+            )],
+        );
+        let conflicts = detect_conflicts(&[a, b, c]);
+        let collision = conflicts
+            .iter()
+            .find(|c| matches!(c.kind, ConflictKind::FileReplaceCollision { .. }))
+            .expect("replace_file collision detected");
+        assert_eq!(collision.participants.len(), 2);
+        let mod_ids: Vec<&str> = collision
+            .participants
+            .iter()
+            .map(|p| p.mod_id.as_str())
+            .collect();
+        assert!(mod_ids.contains(&"a"));
+        assert!(mod_ids.contains(&"b"));
+        // Third mod targets a different path, so it doesn't participate.
+        assert!(!mod_ids.contains(&"c"));
+    }
+
+    #[test]
+    fn detect_conflicts_add_file_collision() {
+        let a = analyze_mod(
+            "a",
+            [(
+                "a.gd",
+                r#"_lib.setup([
+    ["add_file", "res://Scripts/Coop.gd", "res://a/Coop.gd"],
+])"#,
+            )],
+        );
+        let b = analyze_mod(
+            "b",
+            [(
+                "b.gd",
+                r#"_lib.setup([
+    ["add_file", "res://Scripts/Coop.gd", "res://b/Coop.gd"],
+])"#,
+            )],
+        );
+        let conflicts = detect_conflicts(&[a, b]);
+        let collision = conflicts
+            .iter()
+            .find(|c| matches!(c.kind, ConflictKind::AddFileCollision { .. }))
+            .expect("add_file collision detected");
+        assert_eq!(collision.participants.len(), 2);
+    }
+
+    #[test]
+    fn detect_conflicts_overlay_collisions_are_hard_severity() {
+        let a = analyze_mod(
+            "a",
+            [(
+                "a.gd",
+                r#"_lib.setup([
+    ["replace_file", "res://Scripts/Player.gd", "res://a/Player.gd"],
+])"#,
+            )],
+        );
+        let b = analyze_mod(
+            "b",
+            [(
+                "b.gd",
+                r#"_lib.setup([
+    ["replace_file", "res://Scripts/Player.gd", "res://b/Player.gd"],
+])"#,
+            )],
+        );
+        let conflicts = detect_conflicts(&[a, b]);
+        // Hard severity gates installation in the launcher.
+        assert!(mod_has_hard_conflict(&conflicts, "a"));
+        assert!(mod_has_hard_conflict(&conflicts, "b"));
     }
 
     #[test]

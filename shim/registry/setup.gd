@@ -34,7 +34,32 @@
 ##   ["register_attachment", {id: data, ...}]
 ##   ["register_furniture",  {id: data, ...}]
 ##   ["register_ai_loadout", {id: data, ...}]
+##   ["replace_file",        target_path, source_path]       # bake-time vanilla replacement
+##   ["add_file",            target_path, source_path]       # bake-time net-new PCK entry
 ##   ["when",                predicate, sub_plan]            # predicate: bool | Callable -> bool
+##
+## Overlay verbs (`replace_file` / `add_file`) are bake-time edits to
+## the PCK and apply BEFORE the rewriter wraps methods. The runtime
+## dispatcher is a no-op for these; they're declared in setup() for
+## the analyzer's benefit. Both verbs are single-owner per target
+## path: two mods touching the same path is a hard conflict the
+## launcher refuses to enable.
+##
+## - `replace_file`: swap a vanilla PCK entry's bytes wholesale. The
+##   rewriter wraps the OVERLAY's methods (not vanilla's), so other
+##   mods hooking into a replaced script see the overlay's method
+##   shapes at runtime.
+## - `add_file`: introduce a new PCK entry vanilla doesn't have.
+##   Adding a path vanilla already ships is a hard conflict (use
+##   `replace_file` instead).
+##
+## Both `target_path` and `source_path` are `res://` strings the bake
+## resolves at install time:
+##   * `target_path` is the PCK entry path the edit lands at
+##     (e.g. `"res://Scripts/Player.gd"`)
+##   * `source_path` is the mod-archive-relative file supplying the
+##     replacement bytes (e.g. `"res://overlays/Player.gd"`); the
+##     bake reads it from the mod's `.vmz` or folder root.
 ##
 ## Predicate evaluation: at setup() traversal time. If a plan is built
 ## in _ready (typical), runtime state is queryable in the predicate. A
@@ -121,6 +146,8 @@ func _setup_run_entry(entry: Variant) -> Dictionary:
 			return _setup_dispatch_aggregator(verb, arr, _bind_register_furniture())
 		"register_ai_loadout":
 			return _setup_dispatch_aggregator(verb, arr, _bind_register_ai_loadout())
+		"replace_file", "add_file":
+			return _setup_dispatch_overlay(verb, arr)
 		"when":
 			return _setup_dispatch_when(arr)
 		_:
@@ -217,3 +244,30 @@ func _bind_register_magazine() -> Callable:   return Callable(self, "register_ma
 func _bind_register_attachment() -> Callable: return Callable(self, "register_attachment")
 func _bind_register_furniture() -> Callable:  return Callable(self, "register_furniture")
 func _bind_register_ai_loadout() -> Callable: return Callable(self, "register_ai_loadout")
+
+
+# Overlay verbs (`replace_file` / `add_file`) declare bake-time edits to
+# the PCK. The runtime dispatcher is a no-op since the bake pipeline
+# already applied the edit when the modded PCK was produced. The shim
+# arm exists so `setup()` returns a sensible result dict instead of an
+# `unknown verb` error.
+#
+# Shape: ["replace_file" | "add_file", target_path, source_path]
+#   target_path: where in the modded PCK the bytes land (e.g.
+#                "res://Scripts/Player.gd")
+#   source_path: where inside the mod the replacement bytes live (e.g.
+#                "res://overlays/Player.gd")
+func _setup_dispatch_overlay(verb: String, arr: Array) -> Dictionary:
+	if arr.size() != 3:
+		return {"verb": verb, "ok": false, "error": "expected [\"%s\", target_path, source_path]" % verb}
+	if not (arr[1] is String) or not (arr[2] is String):
+		return {"verb": verb, "ok": false, "error": "expected string args for target and source paths"}
+	return {
+		"verb": verb,
+		"ok": true,
+		"results": {
+			"target": String(arr[1]),
+			"source": String(arr[2]),
+			"applied_at": "bake_time",
+		},
+	}

@@ -82,6 +82,26 @@ pub struct BakePckInputs<'a> {
     /// Caller is responsible for ensuring `res_path` doesn't collide
     /// with any existing source-PCK entry.
     pub pck_additions: &'a [(String, Vec<u8>)],
+    /// Mod-supplied overlay file replacements applied BEFORE the
+    /// rewriter runs. Each entry is `(target_pck_path, replacement_bytes)`.
+    ///
+    /// Script overlays (`Scripts/X.gd`) replace the source the
+    /// rewriter parses, so the rewriter wraps the OVERLAY's methods,
+    /// not vanilla's. Other mods that hook methods inside an overlaid
+    /// script see the overlay's method shapes at runtime.
+    ///
+    /// Non-script overlays (assets, scenes, .tres files) bypass the
+    /// rewriter entirely and pass through to the output PCK verbatim.
+    ///
+    /// Caller is responsible for collision detection between mods,
+    /// the bake assumes the slice is already conflict-free. If two
+    /// entries target the same path the later one wins.
+    pub overlay_replacements: &'a [(String, Vec<u8>)],
+    /// Mod-supplied overlay file additions: net-new PCK entries from
+    /// mods that vanilla doesn't have. Same shape as `pck_additions`
+    /// but conceptually mod-owned vs crabby-owned. Folded into the
+    /// same write-out path as `pck_additions`.
+    pub overlay_additions: &'a [(String, Vec<u8>)],
 }
 
 /// Outputs from [`bake_pck`].
@@ -137,12 +157,26 @@ pub fn bake_pck(inputs: &BakePckInputs<'_>) -> Result<BakePckOutputs> {
     let empty_kinds: std::collections::HashMap<String, crabby_rewriter::HookFlags> =
         std::collections::HashMap::new();
     let kinds_map = inputs.hooked_method_kinds.unwrap_or(&empty_kinds);
-    let mods_digest = crate::mods_digest_from_kinds(
+    let hooks_and_ids_digest = crate::mods_digest_from_kinds(
         kinds_map
             .iter()
             .map(|(k, f)| (k.as_str(), [f.pre, f.post, f.callback, f.replace])),
         inputs.enabled_mod_ids.iter().map(String::as_str),
     );
+    // Fold overlay edits into the digest so the bake key invalidates
+    // when an overlay's content or path set changes. Hashes the bytes
+    // (not just the path) so editing an overlay's source file forces
+    // a rebake even when the path list is identical.
+    let mods_digest =
+        if inputs.overlay_replacements.is_empty() && inputs.overlay_additions.is_empty() {
+            hooks_and_ids_digest
+        } else {
+            overlay_extended_digest(
+                &hooks_and_ids_digest,
+                inputs.overlay_replacements,
+                inputs.overlay_additions,
+            )
+        };
     let bake_key =
         BakeKey::from_pck_with_mods(inputs.crabby_version, inputs.vanilla_pck, &mods_digest)?;
     let mut archive = PckArchive::open(inputs.vanilla_pck)?;
@@ -173,11 +207,52 @@ pub fn bake_pck(inputs: &BakePckInputs<'_>) -> Result<BakePckOutputs> {
         });
     }
 
+    // Build an overlay-replacement lookup keyed by every variant the
+    // pass-1 entry path lookup might use. PCK entry paths in the
+    // archive may or may not carry the `res://` protocol prefix; mod
+    // authors write `replace_file` targets with `res://`. And vanilla
+    // compiled scripts live at `.gdc` paths while authors write `.gd`.
+    // Indexing all four variants keeps the lookup O(1) without
+    // forcing the pass-1 loop to normalize per entry.
+    //
+    // overlay_map: lookup key (variant path) -> bytes
+    // overlay_origin: lookup key -> original target string (the verbatim
+    //   `replace_file` target the mod author wrote). Lets the diagnostic
+    //   count distinct user-intent targets satisfied, not entries spliced.
+    //   PCKs may ship multiple physical entries for one logical script
+    //   (e.g. both `Scripts/Foo.gdc` and a sibling `Scripts/Foo.gd.remap`),
+    //   so a single mod intent can hit multiple entries.
+    let mut overlay_map: HashMap<String, Vec<u8>> = HashMap::new();
+    let mut overlay_origin: HashMap<String, String> = HashMap::new();
+    for (target, bytes) in inputs.overlay_replacements {
+        let stripped = target
+            .strip_prefix("res://")
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| target.clone());
+        let prefixed = if target.starts_with("res://") {
+            target.clone()
+        } else {
+            format!("res://{stripped}")
+        };
+        for path in [&prefixed, &stripped] {
+            overlay_map.insert(path.clone(), bytes.clone());
+            overlay_origin.insert(path.clone(), target.clone());
+            // Author wrote `.gd` (the source form), but vanilla
+            // compiled scripts live at `.gdc`. Cover both.
+            if let Some(stem) = path.strip_suffix(".gd") {
+                let gdc = format!("{stem}.gdc");
+                overlay_map.insert(gdc.clone(), bytes.clone());
+                overlay_origin.insert(gdc, target.clone());
+            }
+        }
+    }
+
     // ---- Pass 1: parse + rewrite each script.
     let mut rewritten: Vec<Pass1> = Vec::with_capacity(script_entries.len());
     let mut additive_methods: HashSet<String> = HashSet::new();
     let mut zero_byte_skipped = 0usize;
     let mut runtime_incompatible_skipped = 0usize;
+    let mut overlay_script_origins_satisfied: BTreeSet<String> = BTreeSet::new();
     let mut stats = BakeStats::default();
     // Vanilla schema, method names per script. Built incrementally
     // alongside the rewrite loop; surfaced on `BakePckOutputs` for the
@@ -190,8 +265,25 @@ pub fn bake_pck(inputs: &BakePckInputs<'_>) -> Result<BakePckOutputs> {
             runtime_incompatible_skipped += 1;
             continue;
         }
-        let bytes = archive.read(entry)?;
-        let source = detokenize(&bytes)?;
+        // Overlay check: if a mod replaced this script, use the
+        // overlay's bytes as the source (already `.gd` text, no
+        // detokenize needed). Otherwise read + detokenize vanilla.
+        // Either way the source flows into the same parse + rewrite
+        // pipeline, so the rewriter wraps the OVERLAY's methods (not
+        // vanilla's), and other mods hooking into this script see the
+        // overlay's method shapes at runtime.
+        let source = if let Some(overlay_bytes) = overlay_map.get(&entry.path) {
+            if let Some(origin) = overlay_origin.get(&entry.path) {
+                overlay_script_origins_satisfied.insert(origin.clone());
+            }
+            String::from_utf8(overlay_bytes.clone()).map_err(|e| CrabbyError::Bake {
+                context: format!("overlay replacement for {} is not valid UTF-8", entry.path),
+                source: format!("utf8: {e}").into(),
+            })?
+        } else {
+            let bytes = archive.read(entry)?;
+            detokenize(&bytes)?
+        };
         if source.is_empty() {
             zero_byte_skipped += 1;
             continue;
@@ -376,7 +468,7 @@ pub fn bake_pck(inputs: &BakePckInputs<'_>) -> Result<BakePckOutputs> {
     // doesn't currently support additions, the vanilla `.gd.remap`
     // entry's pass-through hook writes the content instead.
     //
-    // Build a parallel map: vanilla `.gd.remap` path → desired remap body.
+    // Build a parallel map: vanilla `.gd.remap` path -> desired remap body.
     let mut remap_overrides: HashMap<String, Vec<u8>> = HashMap::new();
     for (_src, rep) in &replacements {
         for (path, body) in &rep.extras {
@@ -384,9 +476,43 @@ pub fn bake_pck(inputs: &BakePckInputs<'_>) -> Result<BakePckOutputs> {
         }
     }
 
+    // Non-script overlay replacements (assets, scenes, .tres files)
+    // bypass the rewriter entirely and pass through here. Script-path
+    // overlays are already handled by the pass-1 source splice above
+    // and shouldn't fire again here, so drain them out before the
+    // streaming pass to keep the closure's branch order obvious.
+    //
+    // Same prefix-tolerance trick as `overlay_map` above: PCK entry
+    // paths may or may not carry the `res://` prefix, so index both.
+    let mut nonscript_overlay_replacements: HashMap<String, Vec<u8>> = HashMap::new();
+    for (target, bytes) in inputs.overlay_replacements {
+        let is_script_target = target.ends_with(".gd") || target.ends_with(".gdc");
+        if is_script_target {
+            continue;
+        }
+        let stripped = target
+            .strip_prefix("res://")
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| target.clone());
+        let prefixed = if target.starts_with("res://") {
+            target.clone()
+        } else {
+            format!("res://{stripped}")
+        };
+        nonscript_overlay_replacements.insert(prefixed, bytes.clone());
+        nonscript_overlay_replacements.insert(stripped, bytes.clone());
+    }
+    let overlay_files_replaced =
+        overlay_script_origins_satisfied.len() + nonscript_overlay_replacements.len();
+    let overlay_files_added = inputs.overlay_additions.len();
+
+    // Combine crabby-owned additions (e.g. `Lib.gd`) with mod-owned
+    // overlay additions. Both lands as fresh entries in the output.
+    let mut all_additions: Vec<(String, Vec<u8>)> = inputs.pck_additions.to_vec();
+    all_additions.extend(inputs.overlay_additions.iter().cloned());
+
     // ---- Stream every entry through rewrite_to, applying replacements
-    //      and appending net-new entries from `inputs.pck_additions`
-    //      (e.g. `Lib.gd`, see crate docs).
+    //      and appending net-new entries.
     archive.rewrite_to_with_additions(
         inputs.out_pck,
         |entry, _bytes| {
@@ -396,9 +522,12 @@ pub fn bake_pck(inputs: &BakePckInputs<'_>) -> Result<BakePckOutputs> {
             if let Some(body) = remap_overrides.remove(&entry.path) {
                 return Some((entry.path.clone(), body));
             }
+            if let Some(body) = nonscript_overlay_replacements.remove(&entry.path) {
+                return Some((entry.path.clone(), body));
+            }
             None
         },
-        inputs.pck_additions.to_vec(),
+        all_additions,
     )?;
 
     // Re-open to get the final entry count for the report.
@@ -410,6 +539,8 @@ pub fn bake_pck(inputs: &BakePckInputs<'_>) -> Result<BakePckOutputs> {
         total_entries,
         zero_byte_skipped,
         runtime_incompatible_skipped,
+        overlay_files_replaced,
+        overlay_files_added,
         scripts_with_hooks = stats.scripts_with_hooks,
         total_hooks = stats.total_hooks,
         candidate_methods = stats.candidate_methods,
@@ -459,6 +590,55 @@ fn swap_gdc_to_gd(path: &str) -> String {
     } else {
         path.to_owned()
     }
+}
+
+/// Mix overlay edits into the existing hooks-and-IDs digest. Each
+/// edit's path AND content bytes feed the hash, so editing an overlay
+/// source file forces a rebake even if the path list didn't change.
+///
+/// Replacements and additions are hashed under separate section
+/// markers so a path that moves from "added" to "replaced" (vanilla
+/// shipped that path in an update) produces a different digest.
+///
+/// Pub so install-side bake-key computation can use the same digest
+/// extension when deciding whether the live PCK is `AlreadyCurrent`.
+/// install.rs and this module must agree on the digest shape; pulling
+/// it into one place enforces that.
+#[must_use]
+pub fn overlay_extended_digest(
+    base_digest: &str,
+    replacements: &[(String, Vec<u8>)],
+    additions: &[(String, Vec<u8>)],
+) -> String {
+    use sha2::{Digest, Sha256};
+
+    let mut hasher = Sha256::new();
+    hasher.update(base_digest.as_bytes());
+    hasher.update(b"\x00overlay-replace\x00");
+    let mut sorted_repl: Vec<&(String, Vec<u8>)> = replacements.iter().collect();
+    sorted_repl.sort_by(|a, b| a.0.cmp(&b.0));
+    for (path, bytes) in sorted_repl {
+        hasher.update(path.as_bytes());
+        hasher.update(b":");
+        hasher.update(bytes);
+        hasher.update(b"\n");
+    }
+    hasher.update(b"\x00overlay-add\x00");
+    let mut sorted_add: Vec<&(String, Vec<u8>)> = additions.iter().collect();
+    sorted_add.sort_by(|a, b| a.0.cmp(&b.0));
+    for (path, bytes) in sorted_add {
+        hasher.update(path.as_bytes());
+        hasher.update(b":");
+        hasher.update(bytes);
+        hasher.update(b"\n");
+    }
+    let bytes = hasher.finalize();
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        use std::fmt::Write as _;
+        let _ = write!(out, "{b:02x}");
+    }
+    out
 }
 
 #[cfg(test)]
