@@ -58,11 +58,19 @@ commit_log=$(git log "origin/$BASE_REF..origin/$HEAD_REF" \
 # Buckets: each section is a verb -> list of "PR_NUM|subject" lines.
 declare -A SECTIONS
 
-# Track the highest marker seen. 0=none, 1=minor, 2=major.
-highest_marker=0
-# Track whether any bumping verb appeared at all (so docs-only batches don't
-# trigger a release).
-has_bumping_commit=0
+# Counters accumulate across the whole batch. Each contributing commit
+# advances every counter whose marker it carries. Rules:
+#
+#   - Any bumping verb commit OR untagged "Other" commit: patch += 1
+#   - A `!` marker on a bumping verb:                     minor += 1
+#   - A `!!` marker on a bumping verb:                    major += 1
+#
+# At the end, if major moved at all, minor resets to 0 (regardless of
+# how many `!` markers contributed). docs/ci/style commits don't
+# advance any counter and don't trigger a release on their own.
+patch_inc=0
+minor_inc=0
+major_inc=0
 
 # Verb classification.
 is_bumping_verb() {
@@ -102,10 +110,13 @@ SECTION_ORDER=(feat fix perf chore deps build test style docs ci other)
 while IFS=$'\t' read -r sha author subject; do
     [[ -z "$sha" ]] && continue
 
-    # Skip self-authored version bumps. The github-actions bot author name is
-    # what `actions/checkout` + a `git commit` from inside the workflow uses
-    # when GITHUB_TOKEN does the push.
-    if [[ "$author" == "github-actions[bot]" ]] && [[ "$subject" == "chore(release):"* ]]; then
+    # Skip self-authored version bumps. The subject shape
+    # `chore(release): bump version to X.Y.Z` is unique enough that
+    # we filter on subject alone, since the author field can vary
+    # depending on which auth path the push took (HTTPS token vs
+    # SSH deploy key) and we hit an infinite-loop bug when only one
+    # of the two matched.
+    if [[ "$subject" =~ ^chore\(release\):[[:space:]]+bump\ version\ to\ [0-9]+\.[0-9]+\.[0-9]+ ]]; then
         continue
     fi
 
@@ -134,19 +145,19 @@ while IFS=$'\t' read -r sha author subject; do
 
     # Markers only affect bumping verbs. !/!! on docs/ci/style is silently
     # ignored (those verbs don't bump; let authors write `docs!: ...` without
-    # surprising them).
+    # surprising them). Each marker advances its counter independently;
+    # the final new version is `old + (major, minor, patch)` with a
+    # minor reset to 0 if major moved.
     if is_bumping_verb "$verb"; then
-        has_bumping_commit=1
+        patch_inc=$(( patch_inc + 1 ))
         case "$markers" in
-            "!!") (( highest_marker = highest_marker > 2 ? highest_marker : 2 )) ;;
-            "!")  (( highest_marker = highest_marker > 1 ? highest_marker : 1 )) ;;
+            "!!") major_inc=$(( major_inc + 1 )) ;;
+            "!")  minor_inc=$(( minor_inc + 1 )) ;;
         esac
-    fi
-
-    # The "other" bucket counts as a patch-bumping commit (unknown verbs still
-    # represent some kind of change that warrants a release).
-    if [[ "$verb" == "other" ]]; then
-        has_bumping_commit=1
+    elif [[ "$verb" == "other" ]]; then
+        # Unknown verbs count as patch-bumping. Markers were already
+        # stripped above so this path doesn't carry !/!! contributions.
+        patch_inc=$(( patch_inc + 1 ))
     fi
 
     # Try to find the squash-merge PR number for this commit. Format is
@@ -177,29 +188,28 @@ while IFS=$'\t' read -r sha author subject; do
     SECTIONS["$verb"]+="${line}"$'\n'
 done <<< "$commit_log"
 
-# Compute the new version.
+# Compute the new version by stacking each counter's accumulated
+# increment onto the corresponding segment of the old version. Patch
+# is a monotonic global counter (never resets). Minor resets to 0
+# when major bumps in this batch, regardless of how many `!` markers
+# contributed.
 new_major="$old_major"
 new_minor="$old_minor"
-new_patch="$old_patch"
-bump_label="none"
+new_patch=$(( old_patch + patch_inc ))
 
-if [[ "$has_bumping_commit" == "1" ]]; then
-    # Patch always advances on a bumping batch (global monotonic counter).
-    new_patch=$(( old_patch + 1 ))
-    case "$highest_marker" in
-        2)
-            new_major=$(( old_major + 1 ))
-            new_minor=0
-            bump_label="major"
-            ;;
-        1)
-            new_minor=$(( old_minor + 1 ))
-            bump_label="minor"
-            ;;
-        *)
-            bump_label="patch"
-            ;;
-    esac
+if (( major_inc > 0 )); then
+    new_major=$(( old_major + major_inc ))
+    new_minor=0
+    bump_label="major"
+elif (( minor_inc > 0 )); then
+    new_minor=$(( old_minor + minor_inc ))
+    bump_label="minor"
+elif (( patch_inc > 0 )); then
+    bump_label="patch"
+else
+    # Nothing bumped: docs/ci/style only (or empty batch). Don't
+    # produce a new version.
+    bump_label="none"
 fi
 
 new_version="${new_major}.${new_minor}.${new_patch}"
