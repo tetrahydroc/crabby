@@ -66,6 +66,55 @@ fn walk_folder(root: &Path, dir: &Path, out: &mut Vec<(String, String)>) {
     }
 }
 
+/// Read raw bytes from a single file inside a discovered mod's archive
+/// or folder root, matched by its mod-relative path.
+///
+/// `mod_relative` is the path inside the mod (e.g.
+/// `"overlays/Player.gd"`). Caller is responsible for stripping any
+/// `res://` prefix the mod author may have written. Returns `Ok(None)`
+/// when the file isn't found in the mod (not an error since overlay
+/// resolution may probe optional paths); returns `Err` only on
+/// archive-corruption or IO failure.
+pub fn read_mod_file_bytes(
+    mod_: &DiscoveredMod,
+    mod_relative: &str,
+) -> Result<Option<Vec<u8>>> {
+    match mod_.source {
+        ModSource::Folder => {
+            let path = mod_.archive_path.join(mod_relative);
+            match std::fs::read(&path) {
+                Ok(bytes) => Ok(Some(bytes)),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(e) => Err(CrabbyError::io_at(path, e)),
+            }
+        }
+        ModSource::Vmz | ModSource::Zip => {
+            let f = std::fs::File::open(&mod_.archive_path)
+                .map_err(|s| CrabbyError::io_at(mod_.archive_path.to_path_buf(), s))?;
+            let mut z = zip::ZipArchive::new(f).map_err(|e| CrabbyError::Bake {
+                context: format!("read mod archive {}", mod_.archive_path.display()),
+                source: format!("zip: {e}").into(),
+            })?;
+            let mut entry = match z.by_name(mod_relative) {
+                Ok(e) => e,
+                Err(_) => return Ok(None),
+            };
+            if entry.is_dir() {
+                return Ok(None);
+            }
+            let mut buf = Vec::with_capacity(entry.size() as usize);
+            std::io::copy(&mut entry, &mut buf).map_err(|e| CrabbyError::Bake {
+                context: format!(
+                    "read entry {mod_relative} in {}",
+                    mod_.archive_path.display()
+                ),
+                source: format!("{e}").into(),
+            })?;
+            Ok(Some(buf))
+        }
+    }
+}
+
 fn read_archive(path: &Path) -> Result<Vec<(String, String)>> {
     let f = std::fs::File::open(path).map_err(|s| CrabbyError::io_at(path.to_path_buf(), s))?;
     let mut z = zip::ZipArchive::new(f).map_err(|e| CrabbyError::Bake {

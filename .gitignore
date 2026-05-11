@@ -6,6 +6,9 @@ Cargo.lock.bak
 /tests/fixtures/local/
 /bake-output/
 
+# Built .vmz outputs from tests/example_mods/package.sh
+/tests/example_mods/dist/
+
 # One-shot debug / probe scripts (per-developer, never shipped)
 /scratch/
 /Scripts/

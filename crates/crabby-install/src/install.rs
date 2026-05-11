@@ -169,6 +169,19 @@ pub fn install(opts: &InstallOptions<'_>) -> Result<InstallReport> {
     let pre_bake_intents = crabby_mod_analyzer::analyze_enabled_mods(opts.game_dir)
         .inspect_err(|e| tracing::warn!(error = %e, "analyzer: pre-bake failed; wrappers will not be skipped"))
         .unwrap_or_default();
+
+    // Hard-conflict gate: overlay collisions (two enabled mods both
+    // replace_file or add_file the same target) make the bake's
+    // overlay-resolve step nondeterministic - the last-write-wins
+    // ordering across mods isn't a contract authors can rely on.
+    // Refuse to bake until the user disables one of the conflicting
+    // mods. The conflict pill in the launcher already tells them
+    // which two mods are fighting; this is the enforcement layer
+    // that makes the warning load-bearing.
+    if let Err(e) = guard_overlay_conflicts(&pre_bake_intents) {
+        return Err(e);
+    }
+
     let hooked_kinds: std::collections::HashMap<String, crabby_rewriter::HookFlags> =
         crabby_mod_analyzer::collect_hooked_method_kinds(&pre_bake_intents)
             .into_iter()
@@ -191,12 +204,27 @@ pub fn install(opts: &InstallOptions<'_>) -> Result<InstallReport> {
     // prior bake and install would short-circuit to AlreadyCurrent.
     // Same goes for no-hook mods (pure registry / UI) toggling enabled.
     let enabled_mod_ids: Vec<String> = pre_bake_intents.iter().map(|i| i.mod_id.clone()).collect();
-    let mods_digest = crabby_bake::mods_digest_from_kinds(
+    let hooks_and_ids_digest = crabby_bake::mods_digest_from_kinds(
         hooked_kinds
             .iter()
             .map(|(k, f)| (k.as_str(), [f.pre, f.post, f.callback, f.replace])),
         enabled_mod_ids.iter().map(String::as_str),
     );
+
+    // Resolve overlay edits early so the AlreadyCurrent comparison sees
+    // the same digest the bake would compute. Mismatch here means an
+    // overlay file content changed even when the mod toggle set didn't.
+    let (overlay_replacements, overlay_additions) =
+        resolve_overlay_edits(opts.game_dir, &pre_bake_intents);
+    let mods_digest = if overlay_replacements.is_empty() && overlay_additions.is_empty() {
+        hooks_and_ids_digest
+    } else {
+        crabby_bake::overlay_extended_digest(
+            &hooks_and_ids_digest,
+            &overlay_replacements,
+            &overlay_additions,
+        )
+    };
 
     // Compute the bake key against the backup (vanilla source of
     // truth) folded with the mods digest. Mismatch with the recorded
@@ -239,6 +267,9 @@ pub fn install(opts: &InstallOptions<'_>) -> Result<InstallReport> {
         crate::artifacts::LIB_PCK_PATH.to_string(),
         crate::artifacts::LIB_SOURCE.as_bytes().to_vec(),
     )];
+    // Overlay edits were resolved earlier (above the AlreadyCurrent
+    // check) so the digest comparison sees them; reuse those slices
+    // here without re-reading every mod archive.
     let bake = bake_pck(&BakePckInputs {
         vanilla_pck: &backup,
         out_pck: &live_pck,
@@ -246,6 +277,8 @@ pub fn install(opts: &InstallOptions<'_>) -> Result<InstallReport> {
         hooked_method_kinds: Some(&hooked_kinds),
         enabled_mod_ids: &enabled_mod_ids,
         pck_additions: &pck_additions,
+        overlay_replacements: &overlay_replacements,
+        overlay_additions: &overlay_additions,
     })?;
     let baked_hash = hash_file(&live_pck)?;
 
@@ -257,6 +290,38 @@ pub fn install(opts: &InstallOptions<'_>) -> Result<InstallReport> {
         Some(vanilla_hash),
         Some(baked_hash),
     )?;
+
+    // Refresh mod_index.cfg with the analyzer's overlay-source view
+    // so the runtime mod-cache rebuild knows which entries to strip
+    // from the runtime mount. Has to happen here (right after bake)
+    // so toggle-time index refreshes can't overwrite our overlay
+    // metadata with stale no-overlay-info data. Best-effort: a
+    // failure here doesn't roll back the bake; the runtime falls
+    // back to a per-id scan if the index is missing or stale.
+    let cfg_for_index = crabby_config::ModConfig::load_or_default(opts.game_dir)?;
+    let discovered_for_index =
+        crabby_config::discover_mods_for_config(opts.game_dir, &cfg_for_index)?;
+    let overlay_sources_by_mod_id: std::collections::BTreeMap<String, Vec<String>> =
+        pre_bake_intents
+            .iter()
+            .filter(|i| !i.overlay_writes.is_empty())
+            .map(|i| {
+                let sources: Vec<String> = i
+                    .overlay_writes
+                    .iter()
+                    .filter_map(|w| w.source_path.clone())
+                    .collect();
+                (i.mod_id.clone(), sources)
+            })
+            .collect();
+    if let Err(e) = crabby_config::mod_index::rebuild_and_save_from_discovered_with_overlays(
+        opts.game_dir,
+        &cfg_for_index,
+        &discovered_for_index,
+        &overlay_sources_by_mod_id,
+    ) {
+        warn!(error = %e, "install: post-bake mod_index refresh failed (runtime falls back to per-id scan)");
+    }
 
     // Post-bake mod analysis. Best-effort, since analyzer failures
     // don't block the install. The report goes to the log; the UI's
@@ -278,6 +343,173 @@ pub fn install(opts: &InstallOptions<'_>) -> Result<InstallReport> {
         manifest,
         bake: Some(bake),
     })
+}
+
+/// Refuse to bake when any pair of enabled mods declared overlay
+/// verbs targeting the same PCK path. Last-write-wins between mods
+/// isn't a contract anyone should depend on, so we surface the
+/// collision as an install-time hard error pointing at both mods.
+///
+/// Caller resolves by disabling one of the conflicting mods in the
+/// launcher; the conflict chip in the Mods tab already tells them
+/// which mods are fighting and on what target.
+fn guard_overlay_conflicts(intents: &[crabby_mod_analyzer::ModIntent]) -> Result<()> {
+    use crabby_mod_analyzer::ConflictKind;
+
+    let conflicts = crabby_mod_analyzer::detect_conflicts(intents);
+    let overlay_collisions: Vec<&crabby_mod_analyzer::Conflict> = conflicts
+        .iter()
+        .filter(|c| {
+            matches!(
+                c.kind,
+                ConflictKind::FileReplaceCollision { .. }
+                    | ConflictKind::AddFileCollision { .. }
+            )
+        })
+        .collect();
+
+    if overlay_collisions.is_empty() {
+        return Ok(());
+    }
+
+    let mut summary = String::with_capacity(overlay_collisions.len() * 96);
+    for c in &overlay_collisions {
+        let participants: Vec<String> = c
+            .participants
+            .iter()
+            .map(|p| p.mod_id.clone())
+            .collect();
+        let target = match &c.kind {
+            ConflictKind::FileReplaceCollision { target } => format!("replace_file `{target}`"),
+            ConflictKind::AddFileCollision { target } => format!("add_file `{target}`"),
+            _ => unreachable!("filter above"),
+        };
+        summary.push_str(&format!("  - {target} claimed by [{}]\n", participants.join(", ")));
+    }
+    Err(CrabbyError::Bake {
+        context: format!(
+            "{} hard overlay conflict(s) prevent baking. Disable one mod from each pair, then bake again.\n{summary}",
+            overlay_collisions.len(),
+        ),
+        source: "overlay verbs target the same PCK path across multiple enabled mods".into(),
+    })
+}
+
+/// Resolve every enabled mod's overlay setup-plan intents into byte
+/// slices ready for the bake pipeline.
+///
+/// For each `replace_file` / `add_file` intent, opens the owning mod's
+/// archive (or folder), reads the source-path bytes, and returns a
+/// `(target_pck_path, bytes)` tuple. Returns two slices: replacements
+/// (for `replace_file`) and additions (for `add_file`).
+///
+/// Failures are non-fatal per intent: a missing source file logs a
+/// warning and the intent is dropped from the bake. The mod analyzer
+/// still surfaces the intent in the conflict surface, so the user
+/// sees the misconfiguration.
+/// Public alias used by [`crate::bake_status::bake_status_from_intents`]
+/// so the launcher's "is bake current?" check sees the SAME overlay
+/// inputs install would feed the bake. Without this alignment the
+/// bake key install writes never matches the key bake_status reads
+/// back, and the Launch button stays as "Bake & Launch" forever after
+/// any successful overlay-bearing bake.
+pub(crate) fn resolve_overlay_edits_for_intents(
+    game_dir: &Path,
+    intents: &[crabby_mod_analyzer::ModIntent],
+) -> (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) {
+    resolve_overlay_edits(game_dir, intents)
+}
+
+fn resolve_overlay_edits(
+    game_dir: &Path,
+    intents: &[crabby_mod_analyzer::ModIntent],
+) -> (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) {
+    use crabby_mod_analyzer::OverlayVerb;
+
+    let mut replacements: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut additions: Vec<(String, Vec<u8>)> = Vec::new();
+    if intents.iter().all(|i| i.overlay_writes.is_empty()) {
+        return (replacements, additions);
+    }
+
+    // Build a (mod_id -> DiscoveredMod) map so per-intent reads can
+    // open the right archive without re-scanning roots per intent.
+    let cfg = match crabby_config::ModConfig::load_or_default(game_dir) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(error = %e, "overlay: ModConfig load failed; skipping overlay resolution");
+            return (replacements, additions);
+        }
+    };
+    let discovered = match crabby_config::discover_mods_for_config(game_dir, &cfg) {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::warn!(error = %e, "overlay: mod discovery failed; skipping overlay resolution");
+            return (replacements, additions);
+        }
+    };
+    let by_id: std::collections::HashMap<&str, &crabby_manifest::DiscoveredMod> = discovered
+        .iter()
+        .map(|d| (d.manifest.id.as_str(), d))
+        .collect();
+
+    for intent in intents {
+        if intent.overlay_writes.is_empty() {
+            continue;
+        }
+        let Some(disc) = by_id.get(intent.mod_id.as_str()) else {
+            tracing::warn!(
+                mod_id = %intent.mod_id,
+                "overlay: mod has setup-plan overlay verbs but isn't in discovered set; skipping"
+            );
+            continue;
+        };
+        for write in &intent.overlay_writes {
+            let (Some(target), Some(source)) = (&write.target_path, &write.source_path) else {
+                tracing::warn!(
+                    mod_id = %intent.mod_id,
+                    file = %write.filename,
+                    line = write.line,
+                    verb = write.verb.as_str(),
+                    "overlay: skipping intent with non-literal target or source path"
+                );
+                continue;
+            };
+            // Strip `res://` from the source path for archive lookup;
+            // the mod-relative path inside the archive is just the path
+            // suffix without the protocol.
+            let source_rel = source.strip_prefix("res://").unwrap_or(source.as_str());
+            let bytes = match crabby_mod_analyzer::read_mod_file_bytes(disc, source_rel) {
+                Ok(Some(b)) => b,
+                Ok(None) => {
+                    tracing::warn!(
+                        mod_id = %intent.mod_id,
+                        source = %source,
+                        target = %target,
+                        verb = write.verb.as_str(),
+                        "overlay: source path not found in mod archive; skipping intent"
+                    );
+                    continue;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        mod_id = %intent.mod_id,
+                        source = %source,
+                        target = %target,
+                        verb = write.verb.as_str(),
+                        error = %e,
+                        "overlay: failed to read source path from mod archive; skipping intent"
+                    );
+                    continue;
+                }
+            };
+            match write.verb {
+                OverlayVerb::ReplaceFile => replacements.push((target.clone(), bytes)),
+                OverlayVerb::AddFile => additions.push((target.clone(), bytes)),
+            }
+        }
+    }
+    (replacements, additions)
 }
 
 /// Run the analyzer over enabled mods and emit a one-line summary per
@@ -437,4 +669,61 @@ fn write_override_cfg(
     override_cfg::write_atomically(&override_path, &rendered)?;
 
     Ok(backup_rel)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crabby_mod_analyzer::{ModIntent, OverlayVerb, OverlayWriteIntent, Resolvability};
+
+    fn intent_with_replace(mod_id: &str, target: &str, source: &str) -> ModIntent {
+        ModIntent {
+            mod_id: mod_id.to_string(),
+            overlay_writes: vec![OverlayWriteIntent {
+                filename: "main.gd".to_string(),
+                line: 1,
+                verb: OverlayVerb::ReplaceFile,
+                target_path: Some(target.to_string()),
+                source_path: Some(source.to_string()),
+                resolvability: Resolvability::Static,
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn guard_passes_when_no_overlay_collisions() {
+        let intents = vec![
+            intent_with_replace("mod_a", "res://Scripts/Item.gd", "res://a/Item.gd"),
+            intent_with_replace("mod_b", "res://Scripts/Tooltip.gd", "res://b/Tooltip.gd"),
+        ];
+        assert!(guard_overlay_conflicts(&intents).is_ok());
+    }
+
+    #[test]
+    fn guard_blocks_when_two_mods_target_same_file() {
+        let intents = vec![
+            intent_with_replace("mod_a", "res://Scripts/Item.gd", "res://a/Item.gd"),
+            intent_with_replace("mod_b", "res://Scripts/Item.gd", "res://b/Item.gd"),
+        ];
+        let err = guard_overlay_conflicts(&intents).expect_err("collision should refuse bake");
+        let msg = err.to_string();
+        assert!(msg.contains("res://Scripts/Item.gd"), "msg = {msg}");
+        assert!(msg.contains("mod_a"), "msg = {msg}");
+        assert!(msg.contains("mod_b"), "msg = {msg}");
+    }
+
+    #[test]
+    fn guard_blocks_on_multiple_collisions() {
+        let intents = vec![
+            intent_with_replace("a", "res://Scripts/Item.gd", "res://a/Item.gd"),
+            intent_with_replace("b", "res://Scripts/Item.gd", "res://b/Item.gd"),
+            intent_with_replace("c", "res://Scripts/Tooltip.gd", "res://c/Tooltip.gd"),
+            intent_with_replace("d", "res://Scripts/Tooltip.gd", "res://d/Tooltip.gd"),
+        ];
+        let err = guard_overlay_conflicts(&intents).expect_err("two collisions should refuse");
+        let msg = err.to_string();
+        assert!(msg.contains("Item.gd"), "msg = {msg}");
+        assert!(msg.contains("Tooltip.gd"), "msg = {msg}");
+    }
 }

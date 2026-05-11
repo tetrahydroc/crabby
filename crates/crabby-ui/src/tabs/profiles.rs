@@ -290,10 +290,13 @@ fn switch_profile(game_dir: &Path, name: &str) -> Result<(), crabby_error::Crabb
     }
     cfg.active_profile = name.to_string();
     cfg.save(game_dir)?;
-    // Active profile changes the enabled set the runtime should mount.
-    if let Err(e) = crabby_config::mod_index::rebuild_and_save(game_dir) {
-        tracing::warn!(error = %e, profile = %name, "ui: mod_index refresh after profile switch failed");
-    }
+    // Don't refresh mod_index here. The next bake will refresh it
+    // with full overlay-source info. Refreshing here without that
+    // info would overwrite the persisted overlay metadata and break
+    // the runtime cache strip for overlay-bearing mods. The runtime
+    // shim falls back to per-id targeted scanning when the index is
+    // missing or stale, so launching pre-bake against the new
+    // profile still works.
     Ok(())
 }
 
@@ -312,12 +315,7 @@ fn create_profile(game_dir: &Path, name: &str) -> Result<(), crabby_error::Crabb
     cfg.profiles.insert(name.to_string(), Default::default());
     cfg.active_profile = name.to_string();
     cfg.save(game_dir)?;
-    // Brand-new active profile starts empty; index becomes empty too,
-    // but writing it explicitly clears any stale entries from the
-    // previous active profile.
-    if let Err(e) = crabby_config::mod_index::rebuild_and_save(game_dir) {
-        tracing::warn!(error = %e, profile = %name, "ui: mod_index refresh after profile create failed");
-    }
+    // Don't refresh mod_index here, the bake does it. See use_profile.
     Ok(())
 }
 

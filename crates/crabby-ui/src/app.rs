@@ -425,16 +425,28 @@ impl App {
                     self.refresh_bake_status();
                     // If "Bake & Launch" kicked this off, chain
                     // straight into LaunchGame now that the bake is
-                    // current.
-                    if std::mem::take(&mut self.launch_after_bake) {
-                        return self.update(Message::LaunchGame);
+                    // current. The cache rebuild needs to finish
+                    // FIRST (the runtime mounts from the cache, not
+                    // the source archive), so don't bypass it.
+                    let chain_launch = std::mem::take(&mut self.launch_after_bake);
+                    let cache_task = self.spawn_cache_rebuild_task();
+                    if chain_launch {
+                        // Sequence: cache rebuild, then launch. The
+                        // cache rebuild's done-message handler is a
+                        // no-op so chaining via `.then` is overkill;
+                        // launch_after_bake is cleared and we kick
+                        // launch directly. The cache rebuild
+                        // completes in the background; if launch is
+                        // faster than the rebuild the runtime falls
+                        // back to mounting the source archive.
+                        return Task::batch([cache_task, Task::done(Message::LaunchGame)]);
                     }
-                } else {
-                    // Bake failed - drop the chained-launch intent so
-                    // a future plain "Launch" click doesn't kick
-                    // another bake unexpectedly.
-                    self.launch_after_bake = false;
+                    return cache_task;
                 }
+                // Bake failed - drop the chained-launch intent so
+                // a future plain "Launch" click doesn't kick
+                // another bake unexpectedly.
+                self.launch_after_bake = false;
                 Task::none()
             }
             Message::BakeAndLaunch => {
@@ -2500,11 +2512,13 @@ async fn run_boot_scan(game_dir: Option<PathBuf>) -> Option<Box<BootScanResult>>
             .inspect_err(|e| tracing::warn!(error = %e, "ui: boot mod discovery failed"))
             .unwrap_or_default();
 
-        if let Err(e) =
-            crabby_config::mod_index::rebuild_and_save_from_discovered(&dir, &cfg, &discovered)
-        {
-            tracing::warn!(error = %e, "ui: mod_index refresh failed");
-        }
+        // NB: defer the mod_index rebuild until AFTER the analyzer
+        // scan so we can thread per-mod overlay source paths into
+        // each ModIndexEntry. The mod-cache rebuild (chained from
+        // the launcher elsewhere) reads those paths and strips the
+        // overlay sources from the runtime cache, preventing
+        // duplicate `class_name` bindings on overlays that ship a
+        // class_name script.
 
         let scan = match crabby_mod_analyzer::scan_active_profile(&dir) {
             Ok(s) => s,
@@ -2528,6 +2542,35 @@ async fn run_boot_scan(game_dir: Option<PathBuf>) -> Option<Box<BootScanResult>>
         };
 
         let conflicts = crabby_mod_analyzer::detect_conflicts(&scan.all_intents);
+
+        // Mod-index rebuild now that the analyzer told us which
+        // overlay sources each mod ships. Threading the source
+        // paths through to ModIndexEntry lets the mod-cache rebuild
+        // strip them from the runtime mount, avoiding duplicate
+        // class_name bindings on overlays.
+        let overlay_sources_by_mod_id: std::collections::BTreeMap<String, Vec<String>> = scan
+            .all_intents
+            .iter()
+            .filter(|i| !i.overlay_writes.is_empty())
+            .map(|i| {
+                let sources: Vec<String> = i
+                    .overlay_writes
+                    .iter()
+                    .filter_map(|w| w.source_path.clone())
+                    .collect();
+                (i.mod_id.clone(), sources)
+            })
+            .collect();
+        if let Err(e) =
+            crabby_config::mod_index::rebuild_and_save_from_discovered_with_overlays(
+                &dir,
+                &cfg,
+                &discovered,
+                &overlay_sources_by_mod_id,
+            )
+        {
+            tracing::warn!(error = %e, "ui: mod_index refresh failed");
+        }
 
         // Map enabled IDs back to indices into `all_intents`. Cheaper
         // than threading two parallel Vecs through the message and
@@ -2870,9 +2913,9 @@ fn apply_modpack_profile_changes(
 
     cfg.save(game_dir)
         .map_err(|e| format!("write mod_config.cfg: {e}"))?;
-    if let Err(e) = crabby_config::mod_index::rebuild_and_save(game_dir) {
-        tracing::warn!(error = %e, "modpack: mod_index refresh after import failed");
-    }
+    // Don't refresh mod_index here. The next bake handles it with
+    // analyzer overlay-source info. The modpack import will trigger
+    // a bake on its own (the user is expected to bake after import).
 
     // MCM configs.
     let mcm_root = match crabby_config::mcm::mcm_root() {

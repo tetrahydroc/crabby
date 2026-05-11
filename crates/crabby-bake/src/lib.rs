@@ -40,4 +40,4 @@ mod bake_pck;
 
 pub use bake::{BakeInputs, BakeOutputs, BakeStats, bake_pack};
 pub use bake_key::{BakeKey, mods_digest_from_kinds};
-pub use bake_pck::{BakePckInputs, BakePckOutputs, bake_pck};
+pub use bake_pck::{BakePckInputs, BakePckOutputs, bake_pck, overlay_extended_digest};

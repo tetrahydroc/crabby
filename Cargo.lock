@@ -820,7 +820,9 @@ name = "crabby-install"
 version = "0.1.0"
 dependencies = [
  "crabby-bake",
+ "crabby-config",
  "crabby-error",
+ "crabby-manifest",
  "crabby-mod-analyzer",
  "crabby-pack",
  "crabby-rewriter",
