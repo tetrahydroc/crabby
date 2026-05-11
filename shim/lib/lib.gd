@@ -26,7 +26,16 @@
 extends Node
 
 
-const CRABBY_VERSION := "0.1.0"
+# These three constants are substituted into the assembled Lib.gd
+# at compile time by `crabby-install::artifacts::LIB_SOURCE`. The
+# `@@CRABBY_*@@` markers are the substitution targets; editing them
+# here without updating LIB_SOURCE breaks the version surface mods
+# read via `Lib.version()` / `Lib.build_sha()` / `Lib.build_time()`.
+# Default values match the placeholder shape so a stray local edit
+# of lib.gd doesn't produce broken GDScript syntax.
+const CRABBY_VERSION := "@@CRABBY_VERSION@@"
+const CRABBY_BUILD_SHA := "@@CRABBY_BUILD_SHA@@"
+const CRABBY_BUILD_TIME := "@@CRABBY_BUILD_TIME@@"
 
 signal frameworks_ready
 
@@ -141,6 +150,22 @@ static func minor_version() -> int:
 
 static func patch_version() -> int:
 	return int(CRABBY_VERSION.split(".")[2])
+
+
+## Short git SHA the loader was built from, with a `-dirty` suffix
+## when the build was made from an uncommitted working tree. Returns
+## the literal string `"unknown"` for tarball/non-git builds. Pair
+## this with `version()` to identify the exact build (a tester's
+## screenshot's commit can be cross-referenced against the repo).
+static func build_sha() -> String:
+	return CRABBY_BUILD_SHA
+
+
+## ISO 8601 UTC timestamp the loader was compiled at. Same surface
+## as `build_sha()`; useful when distinguishing two builds from the
+## same commit.
+static func build_time() -> String:
+	return CRABBY_BUILD_TIME
 
 
 # --- Public hook API ---------------------------------------------------------
