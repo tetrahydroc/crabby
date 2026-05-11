@@ -14,9 +14,10 @@
 
 use std::path::Path;
 
-use crabby_bake::{BakeKey, mods_digest_from_kinds};
+use crabby_bake::{BakeKey, mods_digest_from_kinds, overlay_extended_digest};
 use crabby_error::Result;
 
+use crate::install::resolve_overlay_edits_for_intents;
 use crate::manifest::InstallManifest;
 use crate::pck_backup::backup_path;
 
@@ -114,19 +115,35 @@ where
         });
     }
 
-    let intents: Vec<&crabby_mod_analyzer::ModIntent> = intents.into_iter().collect();
-    let kinds = crabby_mod_analyzer::collect_hooked_method_kinds_from_refs(intents.iter().copied());
+    let intents_vec: Vec<&crabby_mod_analyzer::ModIntent> = intents.into_iter().collect();
+    let kinds =
+        crabby_mod_analyzer::collect_hooked_method_kinds_from_refs(intents_vec.iter().copied());
     // Digest inputs match `install()`'s exactly so the launcher's
     // "is bake current?" answer doesn't diverge from what install would
     // actually do. The enabled-IDs section catches profile swaps where
     // the new profile's hook footprint coincidentally matches.
-    let enabled_ids: Vec<&str> = intents.iter().map(|i| i.mod_id.as_str()).collect();
-    let digest = mods_digest_from_kinds(
+    let enabled_ids: Vec<&str> = intents_vec.iter().map(|i| i.mod_id.as_str()).collect();
+    let hooks_and_ids_digest = mods_digest_from_kinds(
         kinds
             .iter()
             .map(|(k, v)| (k.as_str(), [v.pre, v.post, v.callback, v.replace])),
         enabled_ids,
     );
+
+    // Overlay edits also feed the bake key. Resolve them the same way
+    // install does (read source bytes from each enabled mod's archive)
+    // so this digest matches what the next install/bake would write.
+    // Without this branch the launcher reports OutOfDate forever after
+    // any successful overlay-bearing bake.
+    let intents_for_resolver: Vec<crabby_mod_analyzer::ModIntent> =
+        intents_vec.iter().map(|i| (*i).clone()).collect();
+    let (overlay_replacements, overlay_additions) =
+        resolve_overlay_edits_for_intents(game_dir, &intents_for_resolver);
+    let digest = if overlay_replacements.is_empty() && overlay_additions.is_empty() {
+        hooks_and_ids_digest
+    } else {
+        overlay_extended_digest(&hooks_and_ids_digest, &overlay_replacements, &overlay_additions)
+    };
 
     let expected = BakeKey::from_pck_with_mods(crabby_version, &backup, &digest)?;
     if expected == manifest.bake_key {

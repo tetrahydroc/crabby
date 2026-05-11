@@ -2514,9 +2514,11 @@ fn set_mod_priority_override(
         }
     }
     cfg.save(game_dir)?;
-    // Refresh the index so the priority change shows up in load order
-    // without waiting for the next enable/disable / install / refresh.
-    let _ = crabby_config::mod_index::rebuild_and_save(game_dir);
+    // Don't refresh mod_index here. The index gets rewritten by
+    // `crabby_install::install` (the bake), which has full analyzer
+    // state including overlay-source paths. Refreshing here would
+    // overwrite that overlay metadata with a no-overlay-info copy
+    // and break the runtime cache strip for overlay-bearing mods.
     Ok(())
 }
 
@@ -2549,13 +2551,9 @@ fn toggle_mod(game_dir: &Path, mod_id: &str) -> Result<(), crabby_error::CrabbyE
         }
     }
     cfg.save(game_dir)?;
-    // Keep the runtime mod-index in sync with the enabled set.
-    // Best-effort: a write failure here doesn't undo the toggle -
-    // shim falls back to per-id targeted scanning when the index is
-    // missing or stale.
-    if let Err(e) = crabby_config::mod_index::rebuild_and_save(game_dir) {
-        tracing::warn!(error = %e, mod_id, "ui: mod_index refresh after toggle failed");
-    }
+    // Don't refresh mod_index here, the bake does it with full
+    // overlay-source info. See the priority-edit branch above for
+    // the rationale.
     Ok(())
 }
 
@@ -2636,6 +2634,8 @@ fn render_conflicts_panel<'a>(
             ConflictKind::RegistryCollision { .. } => ("⚠", Severity::Warn),
             ConflictKind::ReplaceHookCollision { .. } => ("⚠", Severity::Warn),
             ConflictKind::DuplicateVanillaSwap { .. } => ("✖", Severity::Hard),
+            ConflictKind::FileReplaceCollision { .. } => ("✖", Severity::Hard),
+            ConflictKind::AddFileCollision { .. } => ("✖", Severity::Hard),
             ConflictKind::SelfPattern { severity, .. } => (
                 if *severity == Severity::Hard {
                     "✖"

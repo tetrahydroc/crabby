@@ -605,6 +605,8 @@ fn synthesize_analyzer_entries(view: AnalyzerView<'_>) -> Vec<LogEntry> {
             ConflictKind::RegistryCollision { .. } => ("WARN", "registry collision"),
             ConflictKind::ReplaceHookCollision { .. } => ("WARN", "replace hook collision"),
             ConflictKind::DuplicateVanillaSwap { .. } => ("ERROR", "duplicate vanilla swap"),
+            ConflictKind::FileReplaceCollision { .. } => ("ERROR", "replace_file collision"),
+            ConflictKind::AddFileCollision { .. } => ("ERROR", "add_file collision"),
             ConflictKind::SelfPattern { .. } => unreachable!("filtered above"),
         };
         let mut extras = std::collections::BTreeMap::new();
