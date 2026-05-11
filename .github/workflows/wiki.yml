@@ -1,0 +1,40 @@
+name: wiki
+
+# Publish wiki/ to the GitHub Wiki on master pushes that touch the
+# wiki source. Manual dispatch button kept for force-publishes when
+# the wiki drifts and no source change is pending.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "wiki/**"
+      - ".github/workflows/wiki.yml"
+  workflow_dispatch:
+
+# Only one wiki publish runs at a time. The action force-pushes to
+# the wiki repo, so concurrent runs would race.
+concurrency:
+  group: wiki-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: publish wiki
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish wiki/ to GitHub Wiki
+        uses: Andrew-Chen-Wang/github-wiki-action@v4
+        with:
+          # Path inside the repo that mirrors the wiki structure.
+          # Each .md file becomes a wiki page; Home.md is the landing
+          # page. Sidebar / Footer are special files Wiki recognizes.
+          path: wiki/
+          # The action defaults to the repo's wiki; explicit for clarity.
+          repository: ${{ github.repository }}
+          token: ${{ secrets.GITHUB_TOKEN }}

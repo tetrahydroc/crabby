@@ -2636,6 +2636,8 @@ fn render_conflicts_panel<'a>(
             ConflictKind::DuplicateVanillaSwap { .. } => ("✖", Severity::Hard),
             ConflictKind::FileReplaceCollision { .. } => ("✖", Severity::Hard),
             ConflictKind::AddFileCollision { .. } => ("✖", Severity::Hard),
+            ConflictKind::MethodReplaceCollision { .. } => ("✖", Severity::Hard),
+            ConflictKind::FileReplaceShadowsMethod { .. } => ("✖", Severity::Hard),
             ConflictKind::SelfPattern { severity, .. } => (
                 if *severity == Severity::Hard {
                     "✖"

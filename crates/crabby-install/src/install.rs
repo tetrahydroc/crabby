@@ -214,15 +214,19 @@ pub fn install(opts: &InstallOptions<'_>) -> Result<InstallReport> {
     // Resolve overlay edits early so the AlreadyCurrent comparison sees
     // the same digest the bake would compute. Mismatch here means an
     // overlay file content changed even when the mod toggle set didn't.
-    let (overlay_replacements, overlay_additions) =
+    let (overlay_replacements, overlay_additions, overlay_method_replacements) =
         resolve_overlay_edits(opts.game_dir, &pre_bake_intents);
-    let mods_digest = if overlay_replacements.is_empty() && overlay_additions.is_empty() {
+    let mods_digest = if overlay_replacements.is_empty()
+        && overlay_additions.is_empty()
+        && overlay_method_replacements.is_empty()
+    {
         hooks_and_ids_digest
     } else {
         crabby_bake::overlay_extended_digest(
             &hooks_and_ids_digest,
             &overlay_replacements,
             &overlay_additions,
+            &overlay_method_replacements,
         )
     };
 
@@ -279,6 +283,7 @@ pub fn install(opts: &InstallOptions<'_>) -> Result<InstallReport> {
         pck_additions: &pck_additions,
         overlay_replacements: &overlay_replacements,
         overlay_additions: &overlay_additions,
+        overlay_method_replacements: &overlay_method_replacements,
     })?;
     let baked_hash = hash_file(&live_pck)?;
 
@@ -291,34 +296,17 @@ pub fn install(opts: &InstallOptions<'_>) -> Result<InstallReport> {
         Some(baked_hash),
     )?;
 
-    // Refresh mod_index.cfg with the analyzer's overlay-source view
-    // so the runtime mod-cache rebuild knows which entries to strip
-    // from the runtime mount. Has to happen here (right after bake)
-    // so toggle-time index refreshes can't overwrite our overlay
-    // metadata with stale no-overlay-info data. Best-effort: a
+    // Refresh mod_index.cfg post-bake so the runtime sees the new
+    // baked PCK alongside the current enabled set. Best-effort: a
     // failure here doesn't roll back the bake; the runtime falls
     // back to a per-id scan if the index is missing or stale.
     let cfg_for_index = crabby_config::ModConfig::load_or_default(opts.game_dir)?;
     let discovered_for_index =
         crabby_config::discover_mods_for_config(opts.game_dir, &cfg_for_index)?;
-    let overlay_sources_by_mod_id: std::collections::BTreeMap<String, Vec<String>> =
-        pre_bake_intents
-            .iter()
-            .filter(|i| !i.overlay_writes.is_empty())
-            .map(|i| {
-                let sources: Vec<String> = i
-                    .overlay_writes
-                    .iter()
-                    .filter_map(|w| w.source_path.clone())
-                    .collect();
-                (i.mod_id.clone(), sources)
-            })
-            .collect();
-    if let Err(e) = crabby_config::mod_index::rebuild_and_save_from_discovered_with_overlays(
+    if let Err(e) = crabby_config::mod_index::rebuild_and_save_from_discovered(
         opts.game_dir,
         &cfg_for_index,
         &discovered_for_index,
-        &overlay_sources_by_mod_id,
     ) {
         warn!(error = %e, "install: post-bake mod_index refresh failed (runtime falls back to per-id scan)");
     }
@@ -362,7 +350,10 @@ fn guard_overlay_conflicts(intents: &[crabby_mod_analyzer::ModIntent]) -> Result
         .filter(|c| {
             matches!(
                 c.kind,
-                ConflictKind::FileReplaceCollision { .. } | ConflictKind::AddFileCollision { .. }
+                ConflictKind::FileReplaceCollision { .. }
+                    | ConflictKind::AddFileCollision { .. }
+                    | ConflictKind::MethodReplaceCollision { .. }
+                    | ConflictKind::FileReplaceShadowsMethod { .. }
             )
         })
         .collect();
@@ -377,6 +368,12 @@ fn guard_overlay_conflicts(intents: &[crabby_mod_analyzer::ModIntent]) -> Result
         let target = match &c.kind {
             ConflictKind::FileReplaceCollision { target } => format!("replace_file `{target}`"),
             ConflictKind::AddFileCollision { target } => format!("add_file `{target}`"),
+            ConflictKind::MethodReplaceCollision { target, method } => {
+                format!("replace_method `{target}#{method}`")
+            }
+            ConflictKind::FileReplaceShadowsMethod { target, method } => {
+                format!("replace_file `{target}` shadows replace_method on `{method}`")
+            }
             _ => unreachable!("filter above"),
         };
         summary.push_str(&format!(
@@ -411,23 +408,36 @@ fn guard_overlay_conflicts(intents: &[crabby_mod_analyzer::ModIntent]) -> Result
 /// bake key install writes never matches the key bake_status reads
 /// back, and the Launch button stays as "Bake & Launch" forever after
 /// any successful overlay-bearing bake.
+/// Returns `(replacements, additions, method_replacements)`. The
+/// third element carries `(target, method, foreign_source_text)` for
+/// each `replace_method` intent, ready to feed into
+/// [`crabby_bake::BakePckInputs::overlay_method_replacements`].
 pub(crate) fn resolve_overlay_edits_for_intents(
     game_dir: &Path,
     intents: &[crabby_mod_analyzer::ModIntent],
-) -> (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) {
+) -> (
+    Vec<(String, Vec<u8>)>,
+    Vec<(String, Vec<u8>)>,
+    Vec<(String, String, String)>,
+) {
     resolve_overlay_edits(game_dir, intents)
 }
 
 fn resolve_overlay_edits(
     game_dir: &Path,
     intents: &[crabby_mod_analyzer::ModIntent],
-) -> (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) {
+) -> (
+    Vec<(String, Vec<u8>)>,
+    Vec<(String, Vec<u8>)>,
+    Vec<(String, String, String)>,
+) {
     use crabby_mod_analyzer::OverlayVerb;
 
     let mut replacements: Vec<(String, Vec<u8>)> = Vec::new();
     let mut additions: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut method_replacements: Vec<(String, String, String)> = Vec::new();
     if intents.iter().all(|i| i.overlay_writes.is_empty()) {
-        return (replacements, additions);
+        return (replacements, additions, method_replacements);
     }
 
     // Build a (mod_id -> DiscoveredMod) map so per-intent reads can
@@ -436,14 +446,14 @@ fn resolve_overlay_edits(
         Ok(c) => c,
         Err(e) => {
             tracing::warn!(error = %e, "overlay: ModConfig load failed; skipping overlay resolution");
-            return (replacements, additions);
+            return (replacements, additions, method_replacements);
         }
     };
     let discovered = match crabby_config::discover_mods_for_config(game_dir, &cfg) {
         Ok(d) => d,
         Err(e) => {
             tracing::warn!(error = %e, "overlay: mod discovery failed; skipping overlay resolution");
-            return (replacements, additions);
+            return (replacements, additions, method_replacements);
         }
     };
     let by_id: std::collections::HashMap<&str, &crabby_manifest::DiscoveredMod> = discovered
@@ -504,10 +514,37 @@ fn resolve_overlay_edits(
             match write.verb {
                 OverlayVerb::ReplaceFile => replacements.push((target.clone(), bytes)),
                 OverlayVerb::AddFile => additions.push((target.clone(), bytes)),
+                OverlayVerb::ReplaceMethod => {
+                    let Some(method) = &write.method_name else {
+                        tracing::warn!(
+                            mod_id = %intent.mod_id,
+                            file = %write.filename,
+                            line = write.line,
+                            target = %target,
+                            "overlay: replace_method intent missing method name; skipping"
+                        );
+                        continue;
+                    };
+                    let foreign_text = match String::from_utf8(bytes) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::warn!(
+                                mod_id = %intent.mod_id,
+                                source = %source,
+                                target = %target,
+                                method = %method,
+                                error = %e,
+                                "overlay: replace_method source is not valid UTF-8; skipping"
+                            );
+                            continue;
+                        }
+                    };
+                    method_replacements.push((target.clone(), method.clone(), foreign_text));
+                }
             }
         }
     }
-    (replacements, additions)
+    (replacements, additions, method_replacements)
 }
 
 /// Run the analyzer over enabled mods and emit a one-line summary per
@@ -683,6 +720,7 @@ mod tests {
                 verb: OverlayVerb::ReplaceFile,
                 target_path: Some(target.to_string()),
                 source_path: Some(source.to_string()),
+                method_name: None,
                 resolvability: Resolvability::Static,
             }],
             ..Default::default()

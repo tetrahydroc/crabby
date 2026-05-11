@@ -34,16 +34,18 @@
 ##   ["register_attachment", {id: data, ...}]
 ##   ["register_furniture",  {id: data, ...}]
 ##   ["register_ai_loadout", {id: data, ...}]
-##   ["replace_file",        target_path, source_path]       # bake-time vanilla replacement
-##   ["add_file",            target_path, source_path]       # bake-time net-new PCK entry
-##   ["when",                predicate, sub_plan]            # predicate: bool | Callable -> bool
+##   ["replace_file",        target_path, source_path]               # bake-time vanilla replacement
+##   ["add_file",            target_path, source_path]               # bake-time net-new PCK entry
+##   ["replace_method",      target_path, method_name, source_path]  # bake-time per-function rewrite
+##   ["when",                predicate, sub_plan]                    # predicate: bool | Callable -> bool
 ##
-## Overlay verbs (`replace_file` / `add_file`) are bake-time edits to
-## the PCK and apply BEFORE the rewriter wraps methods. The runtime
-## dispatcher is a no-op for these; they're declared in setup() for
-## the analyzer's benefit. Both verbs are single-owner per target
-## path: two mods touching the same path is a hard conflict the
-## launcher refuses to enable.
+## Overlay verbs (`replace_file` / `add_file` / `replace_method`) are
+## bake-time edits to the PCK and apply BEFORE the rewriter wraps
+## methods. The runtime dispatcher is a no-op for these; they're
+## declared in setup() for the analyzer's benefit. All three verbs
+## are single-owner per target -- two mods replacing the same file or
+## the same `(target, method)` pair is a hard conflict the launcher
+## refuses to enable.
 ##
 ## - `replace_file`: swap a vanilla PCK entry's bytes wholesale. The
 ##   rewriter wraps the OVERLAY's methods (not vanilla's), so other
@@ -52,6 +54,11 @@
 ## - `add_file`: introduce a new PCK entry vanilla doesn't have.
 ##   Adding a path vanilla already ships is a hard conflict (use
 ##   `replace_file` instead).
+## - `replace_method`: splice a single `func` declaration on an
+##   existing target script. Multiple mods can each replace a
+##   different method on the same target; two replacing the same
+##   `(target, method)` is a hard conflict, and a `replace_file`
+##   shadows every method on the same target.
 ##
 ## Both `target_path` and `source_path` are `res://` strings the bake
 ## resolves at install time:
@@ -148,6 +155,8 @@ func _setup_run_entry(entry: Variant) -> Dictionary:
 			return _setup_dispatch_aggregator(verb, arr, _bind_register_ai_loadout())
 		"replace_file", "add_file":
 			return _setup_dispatch_overlay(verb, arr)
+		"replace_method":
+			return _setup_dispatch_replace_method(arr)
 		"when":
 			return _setup_dispatch_when(arr)
 		_:
@@ -268,6 +277,28 @@ func _setup_dispatch_overlay(verb: String, arr: Array) -> Dictionary:
 		"results": {
 			"target": String(arr[1]),
 			"source": String(arr[2]),
+			"applied_at": "bake_time",
+		},
+	}
+
+
+# replace_method shape: ["replace_method", target_path, method_name, source_path].
+# Same bake-time-only no-op semantics as the other overlay verbs. The
+# analyzer parses this shape from setup() and threads (target, method,
+# source) into the bake pipeline, which splices the foreign source over
+# the matching `func` block in the target script.
+func _setup_dispatch_replace_method(arr: Array) -> Dictionary:
+	if arr.size() != 4:
+		return {"verb": "replace_method", "ok": false, "error": "expected [\"replace_method\", target_path, method_name, source_path]"}
+	if not (arr[1] is String) or not (arr[2] is String) or not (arr[3] is String):
+		return {"verb": "replace_method", "ok": false, "error": "expected string args for target, method, and source paths"}
+	return {
+		"verb": "replace_method",
+		"ok": true,
+		"results": {
+			"target": String(arr[1]),
+			"method": String(arr[2]),
+			"source": String(arr[3]),
 			"applied_at": "bake_time",
 		},
 	}
