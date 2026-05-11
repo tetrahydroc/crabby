@@ -35,20 +35,26 @@ jobs:
     if: github.event.pull_request.head.ref == 'development'
     runs-on: ubuntu-latest
     steps:
+      # Wire up the deploy key BEFORE checkout. The `development` branch
+      # is protected by a "PRs only" ruleset; the only bypass actor we
+      # added is the Deploy Key, so the push at the end of this job has
+      # to come through SSH using that key. checkout@v4 with ssh-key
+      # configures the repo's git remote to use SSH for both fetch and
+      # push, so subsequent `git push` calls authenticate via the key.
       - uses: actions/checkout@v4
         with:
-          # Check out the dev branch directly so we can push the bump
-          # commit back to it. `ref` here is the PR's head ref.
           ref: ${{ github.event.pull_request.head.ref }}
           # Need enough history that `master..development` resolves.
-          # 0 = full history; the script's own `git fetch --depth=200`
-          # would also work but full history is simpler in CI and the
-          # repo is small.
+          # Full history is simpler in CI and the repo is small.
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ssh-key: ${{ secrets.RELEASE_BOT_SSH_KEY }}
 
-      - name: Configure git for the bot
+      - name: Configure git committer identity
         run: |
+          # Tag the bot commits with a recognizable identity. The
+          # script (prepare-release.sh) skips commits matching this
+          # author when computing future bumps so the version-bump
+          # commit doesn't double-count itself.
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
