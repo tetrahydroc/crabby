@@ -309,6 +309,10 @@ impl State {
                 .into()
         } else {
             column![
+                eyebrow("BUILD"),
+                kv_row("Launcher version", crate::app::APP_VERSION.to_string()),
+                kv_row("Git commit", crate::app::BUILD_GIT_SHA.to_string()),
+                kv_row("Build time", crate::app::BUILD_TIME.to_string()),
                 eyebrow("INSTALL"),
                 kv_row("Schema version", as_or_dash(s.schema_version)),
                 kv_row("Bake key", s.bake_key.clone().unwrap_or_else(|| "—".into())),
