@@ -58,7 +58,10 @@ jobs:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
-        run: ./.github/scripts/prepare-release.sh
+        # Invoked via `bash` explicitly rather than as an executable
+        # since the +x bit doesn't always survive cross-platform
+        # checkouts (Windows-on-WSL dev, Windows git client, etc).
+        run: bash .github/scripts/prepare-release.sh
 
       - name: Commit version bump to development
         # Only fires when the script actually edited Cargo.toml (i.e.
