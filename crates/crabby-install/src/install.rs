@@ -362,8 +362,7 @@ fn guard_overlay_conflicts(intents: &[crabby_mod_analyzer::ModIntent]) -> Result
         .filter(|c| {
             matches!(
                 c.kind,
-                ConflictKind::FileReplaceCollision { .. }
-                    | ConflictKind::AddFileCollision { .. }
+                ConflictKind::FileReplaceCollision { .. } | ConflictKind::AddFileCollision { .. }
             )
         })
         .collect();
@@ -374,17 +373,16 @@ fn guard_overlay_conflicts(intents: &[crabby_mod_analyzer::ModIntent]) -> Result
 
     let mut summary = String::with_capacity(overlay_collisions.len() * 96);
     for c in &overlay_collisions {
-        let participants: Vec<String> = c
-            .participants
-            .iter()
-            .map(|p| p.mod_id.clone())
-            .collect();
+        let participants: Vec<String> = c.participants.iter().map(|p| p.mod_id.clone()).collect();
         let target = match &c.kind {
             ConflictKind::FileReplaceCollision { target } => format!("replace_file `{target}`"),
             ConflictKind::AddFileCollision { target } => format!("add_file `{target}`"),
             _ => unreachable!("filter above"),
         };
-        summary.push_str(&format!("  - {target} claimed by [{}]\n", participants.join(", ")));
+        summary.push_str(&format!(
+            "  - {target} claimed by [{}]\n",
+            participants.join(", ")
+        ));
     }
     Err(CrabbyError::Bake {
         context: format!(

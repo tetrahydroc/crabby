@@ -2561,14 +2561,12 @@ async fn run_boot_scan(game_dir: Option<PathBuf>) -> Option<Box<BootScanResult>>
                 (i.mod_id.clone(), sources)
             })
             .collect();
-        if let Err(e) =
-            crabby_config::mod_index::rebuild_and_save_from_discovered_with_overlays(
-                &dir,
-                &cfg,
-                &discovered,
-                &overlay_sources_by_mod_id,
-            )
-        {
+        if let Err(e) = crabby_config::mod_index::rebuild_and_save_from_discovered_with_overlays(
+            &dir,
+            &cfg,
+            &discovered,
+            &overlay_sources_by_mod_id,
+        ) {
             tracing::warn!(error = %e, "ui: mod_index refresh failed");
         }
 

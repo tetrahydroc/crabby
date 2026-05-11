@@ -75,10 +75,7 @@ fn walk_folder(root: &Path, dir: &Path, out: &mut Vec<(String, String)>) {
 /// when the file isn't found in the mod (not an error since overlay
 /// resolution may probe optional paths); returns `Err` only on
 /// archive-corruption or IO failure.
-pub fn read_mod_file_bytes(
-    mod_: &DiscoveredMod,
-    mod_relative: &str,
-) -> Result<Option<Vec<u8>>> {
+pub fn read_mod_file_bytes(mod_: &DiscoveredMod, mod_relative: &str) -> Result<Option<Vec<u8>>> {
     match mod_.source {
         ModSource::Folder => {
             let path = mod_.archive_path.join(mod_relative);

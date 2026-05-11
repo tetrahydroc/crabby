@@ -142,7 +142,11 @@ where
     let digest = if overlay_replacements.is_empty() && overlay_additions.is_empty() {
         hooks_and_ids_digest
     } else {
-        overlay_extended_digest(&hooks_and_ids_digest, &overlay_replacements, &overlay_additions)
+        overlay_extended_digest(
+            &hooks_and_ids_digest,
+            &overlay_replacements,
+            &overlay_additions,
+        )
     };
 
     let expected = BakeKey::from_pck_with_mods(crabby_version, &backup, &digest)?;

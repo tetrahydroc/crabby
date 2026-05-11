@@ -167,17 +167,16 @@ pub fn bake_pck(inputs: &BakePckInputs<'_>) -> Result<BakePckOutputs> {
     // when an overlay's content or path set changes. Hashes the bytes
     // (not just the path) so editing an overlay's source file forces
     // a rebake even when the path list is identical.
-    let mods_digest = if inputs.overlay_replacements.is_empty()
-        && inputs.overlay_additions.is_empty()
-    {
-        hooks_and_ids_digest
-    } else {
-        overlay_extended_digest(
-            &hooks_and_ids_digest,
-            inputs.overlay_replacements,
-            inputs.overlay_additions,
-        )
-    };
+    let mods_digest =
+        if inputs.overlay_replacements.is_empty() && inputs.overlay_additions.is_empty() {
+            hooks_and_ids_digest
+        } else {
+            overlay_extended_digest(
+                &hooks_and_ids_digest,
+                inputs.overlay_replacements,
+                inputs.overlay_additions,
+            )
+        };
     let bake_key =
         BakeKey::from_pck_with_mods(inputs.crabby_version, inputs.vanilla_pck, &mods_digest)?;
     let mut archive = PckArchive::open(inputs.vanilla_pck)?;

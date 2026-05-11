@@ -1799,7 +1799,9 @@ pub fn detect_conflicts(intents: &[ModIntent]) -> Vec<Conflict> {
             continue;
         }
         out.push(Conflict {
-            kind: ConflictKind::FileReplaceCollision { target: target.clone() },
+            kind: ConflictKind::FileReplaceCollision {
+                target: target.clone(),
+            },
             headline: format!("{} mods declare `replace_file` on `{}`", mods.len(), target),
             participants: mods
                 .into_iter()
@@ -1816,7 +1818,9 @@ pub fn detect_conflicts(intents: &[ModIntent]) -> Vec<Conflict> {
             continue;
         }
         out.push(Conflict {
-            kind: ConflictKind::AddFileCollision { target: target.clone() },
+            kind: ConflictKind::AddFileCollision {
+                target: target.clone(),
+            },
             headline: format!("{} mods declare `add_file` on `{}`", mods.len(), target),
             participants: mods
                 .into_iter()
@@ -2830,13 +2834,27 @@ func _ready() -> void:
         let by_verb: std::collections::HashMap<OverlayVerb, &OverlayWriteIntent> =
             m.overlay_writes.iter().map(|w| (w.verb, w)).collect();
 
-        let replace = by_verb.get(&OverlayVerb::ReplaceFile).expect("replace_file intent");
-        assert_eq!(replace.target_path.as_deref(), Some("res://Scripts/Player.gd"));
-        assert_eq!(replace.source_path.as_deref(), Some("res://overlays/Player.gd"));
+        let replace = by_verb
+            .get(&OverlayVerb::ReplaceFile)
+            .expect("replace_file intent");
+        assert_eq!(
+            replace.target_path.as_deref(),
+            Some("res://Scripts/Player.gd")
+        );
+        assert_eq!(
+            replace.source_path.as_deref(),
+            Some("res://overlays/Player.gd")
+        );
 
         let add = by_verb.get(&OverlayVerb::AddFile).expect("add_file intent");
-        assert_eq!(add.target_path.as_deref(), Some("res://Scripts/CoopSync.gd"));
-        assert_eq!(add.source_path.as_deref(), Some("res://overlays/CoopSync.gd"));
+        assert_eq!(
+            add.target_path.as_deref(),
+            Some("res://Scripts/CoopSync.gd")
+        );
+        assert_eq!(
+            add.source_path.as_deref(),
+            Some("res://overlays/CoopSync.gd")
+        );
     }
 
     #[test]
@@ -2865,21 +2883,30 @@ func _ready() -> void:
     fn detect_conflicts_replace_file_collision() {
         let a = analyze_mod(
             "a",
-            [("a.gd", r#"_lib.setup([
+            [(
+                "a.gd",
+                r#"_lib.setup([
     ["replace_file", "res://Scripts/Player.gd", "res://a/Player.gd"],
-])"#)],
+])"#,
+            )],
         );
         let b = analyze_mod(
             "b",
-            [("b.gd", r#"_lib.setup([
+            [(
+                "b.gd",
+                r#"_lib.setup([
     ["replace_file", "res://Scripts/Player.gd", "res://b/Player.gd"],
-])"#)],
+])"#,
+            )],
         );
         let c = analyze_mod(
             "c",
-            [("c.gd", r#"_lib.setup([
+            [(
+                "c.gd",
+                r#"_lib.setup([
     ["replace_file", "res://Scripts/Other.gd", "res://c/Other.gd"],
-])"#)],
+])"#,
+            )],
         );
         let conflicts = detect_conflicts(&[a, b, c]);
         let collision = conflicts
@@ -2887,7 +2914,11 @@ func _ready() -> void:
             .find(|c| matches!(c.kind, ConflictKind::FileReplaceCollision { .. }))
             .expect("replace_file collision detected");
         assert_eq!(collision.participants.len(), 2);
-        let mod_ids: Vec<&str> = collision.participants.iter().map(|p| p.mod_id.as_str()).collect();
+        let mod_ids: Vec<&str> = collision
+            .participants
+            .iter()
+            .map(|p| p.mod_id.as_str())
+            .collect();
         assert!(mod_ids.contains(&"a"));
         assert!(mod_ids.contains(&"b"));
         // Third mod targets a different path, so it doesn't participate.
@@ -2898,15 +2929,21 @@ func _ready() -> void:
     fn detect_conflicts_add_file_collision() {
         let a = analyze_mod(
             "a",
-            [("a.gd", r#"_lib.setup([
+            [(
+                "a.gd",
+                r#"_lib.setup([
     ["add_file", "res://Scripts/Coop.gd", "res://a/Coop.gd"],
-])"#)],
+])"#,
+            )],
         );
         let b = analyze_mod(
             "b",
-            [("b.gd", r#"_lib.setup([
+            [(
+                "b.gd",
+                r#"_lib.setup([
     ["add_file", "res://Scripts/Coop.gd", "res://b/Coop.gd"],
-])"#)],
+])"#,
+            )],
         );
         let conflicts = detect_conflicts(&[a, b]);
         let collision = conflicts
@@ -2920,15 +2957,21 @@ func _ready() -> void:
     fn detect_conflicts_overlay_collisions_are_hard_severity() {
         let a = analyze_mod(
             "a",
-            [("a.gd", r#"_lib.setup([
+            [(
+                "a.gd",
+                r#"_lib.setup([
     ["replace_file", "res://Scripts/Player.gd", "res://a/Player.gd"],
-])"#)],
+])"#,
+            )],
         );
         let b = analyze_mod(
             "b",
-            [("b.gd", r#"_lib.setup([
+            [(
+                "b.gd",
+                r#"_lib.setup([
     ["replace_file", "res://Scripts/Player.gd", "res://b/Player.gd"],
-])"#)],
+])"#,
+            )],
         );
         let conflicts = detect_conflicts(&[a, b]);
         // Hard severity gates installation in the launcher.
