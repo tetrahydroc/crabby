@@ -102,6 +102,16 @@ pub struct BakePckInputs<'a> {
     /// but conceptually mod-owned vs crabby-owned. Folded into the
     /// same write-out path as `pck_additions`.
     pub overlay_additions: &'a [(String, Vec<u8>)],
+    /// Mod-supplied method-level replacements applied to the source
+    /// fed into pass 1 (parse + wrapper synthesis), AFTER any
+    /// `replace_file` overlay but BEFORE `parse_script`. Each tuple
+    /// is `(target_pck_path, method_name, foreign_source)`. The
+    /// rewriter sees the spliced source as if it were vanilla, so
+    /// other mods' hooks call the replaced body, not the vanilla
+    /// one. Caller is responsible for collision detection
+    /// (single-owner per `(target, method)`); the bake assumes the
+    /// slice is conflict-free.
+    pub overlay_method_replacements: &'a [(String, String, String)],
 }
 
 /// Outputs from [`bake_pck`].
@@ -167,16 +177,19 @@ pub fn bake_pck(inputs: &BakePckInputs<'_>) -> Result<BakePckOutputs> {
     // when an overlay's content or path set changes. Hashes the bytes
     // (not just the path) so editing an overlay's source file forces
     // a rebake even when the path list is identical.
-    let mods_digest =
-        if inputs.overlay_replacements.is_empty() && inputs.overlay_additions.is_empty() {
-            hooks_and_ids_digest
-        } else {
-            overlay_extended_digest(
-                &hooks_and_ids_digest,
-                inputs.overlay_replacements,
-                inputs.overlay_additions,
-            )
-        };
+    let mods_digest = if inputs.overlay_replacements.is_empty()
+        && inputs.overlay_additions.is_empty()
+        && inputs.overlay_method_replacements.is_empty()
+    {
+        hooks_and_ids_digest
+    } else {
+        overlay_extended_digest(
+            &hooks_and_ids_digest,
+            inputs.overlay_replacements,
+            inputs.overlay_additions,
+            inputs.overlay_method_replacements,
+        )
+    };
     let bake_key =
         BakeKey::from_pck_with_mods(inputs.crabby_version, inputs.vanilla_pck, &mods_digest)?;
     let mut archive = PckArchive::open(inputs.vanilla_pck)?;
@@ -247,6 +260,37 @@ pub fn bake_pck(inputs: &BakePckInputs<'_>) -> Result<BakePckOutputs> {
         }
     }
 
+    // Method-replacement lookup. Same path-variant strategy as the
+    // overlay map above (cover both `res://` prefix and `.gd`/`.gdc`
+    // variants). Value is a Vec since multiple mods can each replace
+    // a different method on the same target; the install crate has
+    // already gated against two mods replacing the SAME method.
+    let mut method_replacements_by_path: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    for (target, method, foreign) in inputs.overlay_method_replacements {
+        let stripped = target
+            .strip_prefix("res://")
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| target.clone());
+        let prefixed = if target.starts_with("res://") {
+            target.clone()
+        } else {
+            format!("res://{stripped}")
+        };
+        for path in [&prefixed, &stripped] {
+            method_replacements_by_path
+                .entry(path.clone())
+                .or_default()
+                .push((method.clone(), foreign.clone()));
+            if let Some(stem) = path.strip_suffix(".gd") {
+                let gdc = format!("{stem}.gdc");
+                method_replacements_by_path
+                    .entry(gdc)
+                    .or_default()
+                    .push((method.clone(), foreign.clone()));
+            }
+        }
+    }
+
     // ---- Pass 1: parse + rewrite each script.
     let mut rewritten: Vec<Pass1> = Vec::with_capacity(script_entries.len());
     let mut additive_methods: HashSet<String> = HashSet::new();
@@ -272,7 +316,7 @@ pub fn bake_pck(inputs: &BakePckInputs<'_>) -> Result<BakePckOutputs> {
         // pipeline, so the rewriter wraps the OVERLAY's methods (not
         // vanilla's), and other mods hooking into this script see the
         // overlay's method shapes at runtime.
-        let source = if let Some(overlay_bytes) = overlay_map.get(&entry.path) {
+        let mut source = if let Some(overlay_bytes) = overlay_map.get(&entry.path) {
             if let Some(origin) = overlay_origin.get(&entry.path) {
                 overlay_script_origins_satisfied.insert(origin.clone());
             }
@@ -287,6 +331,23 @@ pub fn bake_pck(inputs: &BakePckInputs<'_>) -> Result<BakePckOutputs> {
         if source.is_empty() {
             zero_byte_skipped += 1;
             continue;
+        }
+
+        // Apply mod-supplied per-method replacements before parsing so
+        // wrapper synthesis sees the spliced body. A `replace_file`
+        // against the same target is filtered out by the install
+        // crate's overlay-conflict guard, so reaching here means the
+        // current `source` is either vanilla or a `replace_file`-owned
+        // overlay that some other mod is method-splicing into.
+        if let Some(splices) = method_replacements_by_path.get(&entry.path) {
+            for (method, foreign) in splices {
+                source = crabby_rewriter::splice_method(&source, method, foreign).map_err(|e| {
+                    CrabbyError::Bake {
+                        context: format!("replace_method on {}#{method} failed", entry.path,),
+                        source: format!("splice: {e}").into(),
+                    }
+                })?;
+            }
         }
 
         let parsed = parse_script(&filename, &source)?;
@@ -609,6 +670,7 @@ pub fn overlay_extended_digest(
     base_digest: &str,
     replacements: &[(String, Vec<u8>)],
     additions: &[(String, Vec<u8>)],
+    method_replacements: &[(String, String, String)],
 ) -> String {
     use sha2::{Digest, Sha256};
 
@@ -630,6 +692,17 @@ pub fn overlay_extended_digest(
         hasher.update(path.as_bytes());
         hasher.update(b":");
         hasher.update(bytes);
+        hasher.update(b"\n");
+    }
+    hasher.update(b"\x00overlay-method\x00");
+    let mut sorted_method: Vec<&(String, String, String)> = method_replacements.iter().collect();
+    sorted_method.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
+    for (target, method, foreign) in sorted_method {
+        hasher.update(target.as_bytes());
+        hasher.update(b"#");
+        hasher.update(method.as_bytes());
+        hasher.update(b":");
+        hasher.update(foreign.as_bytes());
         hasher.update(b"\n");
     }
     let bytes = hasher.finalize();

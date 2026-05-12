@@ -58,6 +58,7 @@ mod loot_table_index_transform;
 mod normalize;
 mod recipes_index_transform;
 mod renamer;
+mod replace_method;
 mod resource_serialized;
 mod rewrite;
 mod runtime_incompatible;
@@ -89,6 +90,7 @@ pub use loader_transform::{
 };
 pub use loot_table_index_transform::LOOT_TABLE_SCHEMA_FILENAME;
 pub use recipes_index_transform::RECIPES_SCHEMA_FILENAME;
+pub use replace_method::splice_method;
 pub use resource_serialized::{
     ADDITIVE_HOOK_PREFIX, ADDITIVE_TEMPLATE_SCRIPTS, is_additive_script,
 };

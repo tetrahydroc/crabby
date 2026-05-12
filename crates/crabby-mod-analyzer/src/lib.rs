@@ -196,6 +196,15 @@ pub enum OverlayVerb {
     /// adding a path vanilla already has is also a conflict (use
     /// `replace_file` instead).
     AddFile,
+    /// `replace_method`, swap a single `func` declaration inside an
+    /// existing target script. Bake-time only: the rewriter finds
+    /// `func <name>` in the target's source, locates the function's
+    /// span (signature + indented body), and substitutes the foreign
+    /// source. Multiple mods can each replace a different method on
+    /// the same target file; two mods replacing the same `(target,
+    /// method)` pair is a hard conflict, and a `replace_file` against
+    /// the same target shadows every method on it.
+    ReplaceMethod,
 }
 
 impl OverlayVerb {
@@ -203,6 +212,7 @@ impl OverlayVerb {
         Some(match s {
             "replace_file" => Self::ReplaceFile,
             "add_file" => Self::AddFile,
+            "replace_method" => Self::ReplaceMethod,
             _ => return None,
         })
     }
@@ -213,6 +223,7 @@ impl OverlayVerb {
         match self {
             Self::ReplaceFile => "replace_file",
             Self::AddFile => "add_file",
+            Self::ReplaceMethod => "replace_method",
         }
     }
 }
@@ -240,6 +251,12 @@ pub struct OverlayWriteIntent {
     /// bytes (e.g. `"res://overlays/Player.gd"`). `None` for the same
     /// reason as `target_path`.
     pub source_path: Option<String>,
+    /// For `replace_method` only: the method name being replaced
+    /// inside `target_path`. `None` for `replace_file` / `add_file`
+    /// (which operate on whole files), or when the verb is
+    /// `replace_method` but the method-name literal couldn't be
+    /// parsed.
+    pub method_name: Option<String>,
     /// Resolvability classification. Always `Static` today since the
     /// scanner only matches literal-string args; non-literal args
     /// produce no intent at all.
@@ -761,6 +778,13 @@ fn scan_setup_plan(filename: &str, source: &str, start: usize, end: usize, out: 
     static SETUP_TWO_STRS: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r#"^,\s*"([^"]+)"\s*,\s*"([^"]+)""#).expect("SETUP_TWO_STRS regex")
     });
+    // Three-arg literal-string capture for `replace_method`:
+    // `["replace_method", "res://target", "method", "res://source"]`.
+    // Captures target_path, method_name, source_path in order.
+    static SETUP_THREE_STRS: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"^,\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*"([^"]+)""#)
+            .expect("SETUP_THREE_STRS regex")
+    });
 
     let body = &source[start..end];
     for cap in SETUP_ENTRY.captures_iter(body) {
@@ -871,6 +895,33 @@ fn scan_setup_plan(filename: &str, source: &str, start: usize, end: usize, out: 
                     verb: overlay_verb,
                     target_path,
                     source_path,
+                    method_name: None,
+                    resolvability: Resolvability::Static,
+                });
+            }
+            // ["replace_method", "res://target", "method_name", "res://source"]
+            // Three literal string args; the rewriter swaps just one
+            // `func <name>` declaration inside an otherwise-vanilla
+            // target script.
+            "replace_method" => {
+                let after_verb = &body[cap.get(0).unwrap().end()..];
+                let (target_path, method_name, source_path) = SETUP_THREE_STRS
+                    .captures(after_verb)
+                    .map(|c| {
+                        (
+                            c.get(1).map(|m| m.as_str().to_string()),
+                            c.get(2).map(|m| m.as_str().to_string()),
+                            c.get(3).map(|m| m.as_str().to_string()),
+                        )
+                    })
+                    .unwrap_or((None, None, None));
+                out.overlay_writes.push(OverlayWriteIntent {
+                    filename: filename.to_string(),
+                    line,
+                    verb: OverlayVerb::ReplaceMethod,
+                    target_path,
+                    source_path,
+                    method_name,
                     resolvability: Resolvability::Static,
                 });
             }
@@ -1561,6 +1612,27 @@ pub enum ConflictKind {
         /// New path the mods are fighting over.
         target: String,
     },
+    /// Two or more mods declared `replace_method` for the same
+    /// `(target, method)` pair. Method-level replacement is
+    /// single-owner per `(target, method)`; one mod replacing the
+    /// signature/body cannot coexist with another doing the same.
+    MethodReplaceCollision {
+        /// Target script (e.g. `"res://Scripts/Player.gd"`).
+        target: String,
+        /// Method name being replaced.
+        method: String,
+    },
+    /// One mod declared `replace_file` against a target while another
+    /// mod declared `replace_method` against the same target. Whole-
+    /// file replacement evicts every method on the target, so the
+    /// method-level edit silently never runs. Surfaced as Hard so the
+    /// author has to disambiguate.
+    FileReplaceShadowsMethod {
+        /// Target script being fought over.
+        target: String,
+        /// Method name the method-level edit was trying to replace.
+        method: String,
+    },
     /// Single-mod finding worth surfacing, a Hard or Warn classic
     /// pattern. Reuses the conflict surface so the UI has one channel
     /// to show "things wrong with this mod."
@@ -1777,24 +1849,44 @@ pub fn detect_conflicts(intents: &[ModIntent]) -> Vec<Conflict> {
     // Overlay collisions: bucket replace_file and add_file by target
     // path. Each verb is single-owner per path - two mods touching the
     // same path is a hard conflict, since the bake can only apply one.
+    //
+    // replace_method is bucketed separately by (target, method) since
+    // multiple mods can each replace a *different* method on the same
+    // target without colliding; collision is per-method-pair.
     let mut replace_buckets: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
     let mut add_buckets: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+    let mut method_buckets: BTreeMap<(String, String), Vec<(String, String)>> = BTreeMap::new();
     for intent in intents {
         for w in &intent.overlay_writes {
             let Some(target) = w.target_path.as_deref() else {
                 continue;
             };
-            let bucket = match w.verb {
-                OverlayVerb::ReplaceFile => &mut replace_buckets,
-                OverlayVerb::AddFile => &mut add_buckets,
-            };
-            bucket
-                .entry(target.to_string())
-                .or_default()
-                .push((intent.mod_id.clone(), format!("{}:{}", w.filename, w.line)));
+            match w.verb {
+                OverlayVerb::ReplaceFile => {
+                    replace_buckets
+                        .entry(target.to_string())
+                        .or_default()
+                        .push((intent.mod_id.clone(), format!("{}:{}", w.filename, w.line)));
+                }
+                OverlayVerb::AddFile => {
+                    add_buckets
+                        .entry(target.to_string())
+                        .or_default()
+                        .push((intent.mod_id.clone(), format!("{}:{}", w.filename, w.line)));
+                }
+                OverlayVerb::ReplaceMethod => {
+                    let Some(method) = w.method_name.as_deref() else {
+                        continue;
+                    };
+                    method_buckets
+                        .entry((target.to_string(), method.to_string()))
+                        .or_default()
+                        .push((intent.mod_id.clone(), format!("{}:{}", w.filename, w.line)));
+                }
+            }
         }
     }
-    for (target, mods) in replace_buckets {
+    for (target, mods) in &replace_buckets {
         if mods.len() < 2 {
             continue;
         }
@@ -1804,10 +1896,10 @@ pub fn detect_conflicts(intents: &[ModIntent]) -> Vec<Conflict> {
             },
             headline: format!("{} mods declare `replace_file` on `{}`", mods.len(), target),
             participants: mods
-                .into_iter()
+                .iter()
                 .map(|(mid, cs)| ConflictParticipant {
-                    mod_id: mid,
-                    callsite: cs,
+                    mod_id: mid.clone(),
+                    callsite: cs.clone(),
                     detail: format!("replace_file({target})"),
                 })
                 .collect(),
@@ -1830,6 +1922,67 @@ pub fn detect_conflicts(intents: &[ModIntent]) -> Vec<Conflict> {
                     detail: format!("add_file({target})"),
                 })
                 .collect(),
+        });
+    }
+    for ((target, method), mods) in &method_buckets {
+        if mods.len() < 2 {
+            continue;
+        }
+        out.push(Conflict {
+            kind: ConflictKind::MethodReplaceCollision {
+                target: target.clone(),
+                method: method.clone(),
+            },
+            headline: format!(
+                "{} mods declare `replace_method` on `{}#{}`",
+                mods.len(),
+                target,
+                method,
+            ),
+            participants: mods
+                .iter()
+                .map(|(mid, cs)| ConflictParticipant {
+                    mod_id: mid.clone(),
+                    callsite: cs.clone(),
+                    detail: format!("replace_method({target}, {method})"),
+                })
+                .collect(),
+        });
+    }
+    // A replace_file against a target evicts every method on it, so any
+    // replace_method against the same target silently no-ops. Surface
+    // as a hard conflict so the mod authors disambiguate. One conflict
+    // per (target, method) pair, listing both the replace_file owner(s)
+    // and the replace_method owner.
+    for ((target, method), method_mods) in &method_buckets {
+        let Some(file_mods) = replace_buckets.get(target) else {
+            continue;
+        };
+        let mut participants: Vec<ConflictParticipant> = Vec::new();
+        for (mid, cs) in file_mods {
+            participants.push(ConflictParticipant {
+                mod_id: mid.clone(),
+                callsite: cs.clone(),
+                detail: format!("replace_file({target})"),
+            });
+        }
+        for (mid, cs) in method_mods {
+            participants.push(ConflictParticipant {
+                mod_id: mid.clone(),
+                callsite: cs.clone(),
+                detail: format!("replace_method({target}, {method})"),
+            });
+        }
+        out.push(Conflict {
+            kind: ConflictKind::FileReplaceShadowsMethod {
+                target: target.clone(),
+                method: method.clone(),
+            },
+            headline: format!(
+                "`replace_file` on `{}` shadows `replace_method` on `{}`",
+                target, method,
+            ),
+            participants,
         });
     }
 
@@ -2026,7 +2179,9 @@ fn severity_of(c: &Conflict) -> Severity {
     match c.kind {
         ConflictKind::DuplicateVanillaSwap { .. }
         | ConflictKind::FileReplaceCollision { .. }
-        | ConflictKind::AddFileCollision { .. } => Severity::Hard,
+        | ConflictKind::AddFileCollision { .. }
+        | ConflictKind::MethodReplaceCollision { .. }
+        | ConflictKind::FileReplaceShadowsMethod { .. } => Severity::Hard,
         ConflictKind::RegistryCollision { .. } | ConflictKind::ReplaceHookCollision { .. } => {
             Severity::Warn
         }

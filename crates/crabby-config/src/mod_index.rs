@@ -91,21 +91,6 @@ pub struct ModIndexEntry {
     /// async cache rebuild hasn't completed yet, the shim falls
     /// back to mounting the source archive directly in that case.
     pub cache_path: PathBuf,
-    /// `res://`-prefixed source paths for any `replace_file` /
-    /// `add_file` overlay verbs declared by this mod's setup plan.
-    /// Populated by the launcher when it analyzes the mod.
-    ///
-    /// Used by `mod_cache::rebuild_for_enabled` to STRIP these
-    /// entries from the runtime mount: the bake already spliced
-    /// their bytes into vanilla paths inside RTV.pck, so shipping
-    /// them again at the overlay's source path would let Godot scan
-    /// them as a SECOND copy. For overlays that declare
-    /// `class_name`, that produces a duplicate-global-class binding
-    /// collision and the second binding silently fails, leaving any
-    /// script that depended on the class with broken type
-    /// resolution. Excluding the overlay sources from the runtime
-    /// archive avoids the collision entirely.
-    pub overlay_source_paths: Vec<String>,
 }
 
 /// Whole index.
@@ -158,20 +143,6 @@ impl ModIndex {
 /// for other UI work.
 #[must_use]
 pub fn build(cfg: &ModConfig, discovered: &[DiscoveredMod]) -> ModIndex {
-    build_with_overlays(cfg, discovered, &BTreeMap::new())
-}
-
-/// Variant of [`build`] that records per-mod overlay source paths
-/// (the `res://...` source path arg of every `replace_file` /
-/// `add_file` setup-plan verb). Caller resolves these from the mod
-/// analyzer; passing them here threads them through to the mod_index
-/// without coupling crabby-config to the analyzer crate.
-#[must_use]
-pub fn build_with_overlays(
-    cfg: &ModConfig,
-    discovered: &[DiscoveredMod],
-    overlay_sources_by_mod_id: &BTreeMap<String, Vec<String>>,
-) -> ModIndex {
     let by_id: BTreeMap<&str, &DiscoveredMod> = discovered
         .iter()
         .map(|m| (m.manifest.id.as_str(), m))
@@ -213,10 +184,6 @@ pub fn build_with_overlays(
                 // has the game_dir; `build()` stays filesystem-pure for
                 // testability.
                 cache_path: PathBuf::new(),
-                overlay_source_paths: overlay_sources_by_mod_id
-                    .get(id)
-                    .cloned()
-                    .unwrap_or_default(),
             },
         );
     }
@@ -247,23 +214,7 @@ pub fn rebuild_and_save_from_discovered(
     cfg: &ModConfig,
     discovered: &[crabby_manifest::DiscoveredMod],
 ) -> Result<ModIndex> {
-    rebuild_and_save_from_discovered_with_overlays(game_dir, cfg, discovered, &BTreeMap::new())
-}
-
-/// Like [`rebuild_and_save_from_discovered`] but also records per-mod
-/// overlay source paths in each entry. The launcher computes these
-/// from the analyzer's `OverlayWriteIntent` set and threads them down
-/// here so the runtime cache rebuild can strip those entries. Without
-/// this, overlay source files would be mounted at runtime alongside
-/// their baked-into-vanilla destinations, producing duplicate
-/// `class_name` bindings for any overlay that ships a class script.
-pub fn rebuild_and_save_from_discovered_with_overlays(
-    game_dir: &Path,
-    cfg: &ModConfig,
-    discovered: &[crabby_manifest::DiscoveredMod],
-    overlay_sources_by_mod_id: &BTreeMap<String, Vec<String>>,
-) -> Result<ModIndex> {
-    let mut index = build_with_overlays(cfg, discovered, overlay_sources_by_mod_id);
+    let mut index = build(cfg, discovered);
     // Backfill cache_path now that game_dir is known. `build()`
     // intentionally leaves cache_path empty so it stays testable
     // without filesystem deps.
@@ -318,11 +269,6 @@ fn render(idx: &ModIndex) -> String {
             "cache_path = \"{}\"",
             escape_quoted(&e.cache_path.to_string_lossy()),
         );
-        // Overlay source paths: comma-separated, no escaping inside
-        // since `res://` paths can't contain commas. Emit even when
-        // empty so the schema is uniform across mods.
-        let joined = e.overlay_source_paths.join(",");
-        let _ = writeln!(out, "overlay_sources = \"{}\"", escape_quoted(&joined));
         out.push('\n');
     }
     out
@@ -390,20 +336,6 @@ fn parse(text: &str) -> std::result::Result<ModIndex, Box<dyn std::error::Error 
             .and_then(|v| strip_quotes(v))
             .map(PathBuf::from)
             .unwrap_or_default();
-        // overlay_sources is a comma-separated list inside one quoted
-        // string. Older mod_index files predating overlay verbs won't
-        // have this key; default to empty.
-        let overlay_source_paths = kv
-            .get("overlay_sources")
-            .and_then(|v| strip_quotes(v))
-            .map(|s| {
-                if s.is_empty() {
-                    Vec::new()
-                } else {
-                    s.split(',').map(str::to_owned).collect()
-                }
-            })
-            .unwrap_or_default();
         entries.insert(
             id.to_owned(),
             ModIndexEntry {
@@ -414,7 +346,6 @@ fn parse(text: &str) -> std::result::Result<ModIndex, Box<dyn std::error::Error 
                 name,
                 priority,
                 cache_path,
-                overlay_source_paths,
             },
         );
     }
@@ -508,7 +439,6 @@ mod tests {
                 name: "Test Mod".into(),
                 priority: 0,
                 cache_path: PathBuf::new(),
-                overlay_source_paths: Vec::new(),
             },
         );
         let rendered = render(&idx);
@@ -529,7 +459,6 @@ mod tests {
                 name: "weird".into(),
                 priority: 0,
                 cache_path: PathBuf::new(),
-                overlay_source_paths: Vec::new(),
             },
         );
         let rendered = render(&idx);
