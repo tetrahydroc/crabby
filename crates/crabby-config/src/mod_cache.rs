@@ -107,23 +107,7 @@ pub fn rebuild_for_enabled(game_dir: &Path, index: &ModIndex) -> Result<usize> {
             // Already cached at this mtime, nothing to do.
             continue;
         }
-        // Strip overlay source files from the runtime cache: their
-        // bytes are already spliced into the modded RTV.pck at the
-        // overlay's TARGET path, so shipping them again at the
-        // overlay's SOURCE path would let Godot scan a duplicate
-        // copy. For overlays that declare `class_name`, the duplicate
-        // class binding silently fails and any script depending on
-        // the class breaks.
-        let skip_paths: HashSet<String> = entry
-            .overlay_source_paths
-            .iter()
-            .map(|p| {
-                // Normalize away the `res://` prefix since archive
-                // entry paths in .vmz are stored relative.
-                p.strip_prefix("res://").unwrap_or(p.as_str()).to_owned()
-            })
-            .collect();
-        rewrite_archive_filtered(&entry.path, &dst, &skip_paths)?;
+        rewrite_archive(&entry.path, &dst)?;
         built += 1;
     }
 
@@ -144,25 +128,18 @@ pub fn rebuild_for_enabled(game_dir: &Path, index: &ModIndex) -> Result<usize> {
     Ok(built)
 }
 
-/// Read `src` archive, rewrite `.gd` entries, write to `dst`.
+/// Read `src` archive, rewrite `.gd` entries, write to `dst`. Skips
+/// any entry under the top-level `overlays/` directory: the bake
+/// already spliced those bytes into the modded RTV.pck at their
+/// target paths, and shipping them again at the source path would
+/// let Godot scan duplicate copies. For overlays that declare
+/// `class_name`, the duplicate class binding silently fails and any
+/// script depending on the class breaks.
 ///
 /// Pure function over file paths, no global state, fully testable
 /// with temp dirs. The transform is applied to `.gd` entries only;
-/// every other entry is copied through verbatim.
+/// every other (non-overlay) entry is copied through verbatim.
 pub fn rewrite_archive(src: &Path, dst: &Path) -> Result<()> {
-    rewrite_archive_filtered(src, dst, &HashSet::new())
-}
-
-/// Variant of [`rewrite_archive`] that skips entries whose archive-
-/// relative path matches anything in `skip_paths`. Used by
-/// `rebuild_for_enabled` to drop overlay source files from the
-/// runtime mount, since the bake already spliced their bytes into
-/// vanilla paths inside RTV.pck.
-pub fn rewrite_archive_filtered(
-    src: &Path,
-    dst: &Path,
-    skip_paths: &HashSet<String>,
-) -> Result<()> {
     let f = fs::File::open(src).map_err(|s| CrabbyError::io_at(src.to_path_buf(), s))?;
     let mut zip_in = zip::ZipArchive::new(f).map_err(|s| CrabbyError::Config {
         context: format!("opening {} as zip", src.display()),
@@ -189,11 +166,12 @@ pub fn rewrite_archive_filtered(
             source: Box::new(s),
         })?;
         let entry_name = entry.name().to_owned();
-        // Skip overlay source files: their bytes are already baked
-        // into the modded RTV.pck at the overlay's TARGET path, and
-        // shipping them again at the SOURCE path would let Godot scan
-        // duplicate copies (broken for class_name scripts).
-        if skip_paths.contains(&entry_name) {
+        // Skip the entire overlays/ subtree. Authors put any bytes
+        // referenced by `replace_file` / `add_file` / `replace_method`
+        // setup-plan verbs under this directory; the bake reads them
+        // at install time and the runtime cache excludes them so they
+        // never appear as second copies at runtime.
+        if entry_name.starts_with("overlays/") {
             continue;
         }
         let mut bytes = Vec::with_capacity(entry.size() as usize);

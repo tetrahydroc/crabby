@@ -137,15 +137,19 @@ where
     // any successful overlay-bearing bake.
     let intents_for_resolver: Vec<crabby_mod_analyzer::ModIntent> =
         intents_vec.iter().map(|i| (*i).clone()).collect();
-    let (overlay_replacements, overlay_additions) =
+    let (overlay_replacements, overlay_additions, overlay_method_replacements) =
         resolve_overlay_edits_for_intents(game_dir, &intents_for_resolver);
-    let digest = if overlay_replacements.is_empty() && overlay_additions.is_empty() {
+    let digest = if overlay_replacements.is_empty()
+        && overlay_additions.is_empty()
+        && overlay_method_replacements.is_empty()
+    {
         hooks_and_ids_digest
     } else {
         overlay_extended_digest(
             &hooks_and_ids_digest,
             &overlay_replacements,
             &overlay_additions,
+            &overlay_method_replacements,
         )
     };
 

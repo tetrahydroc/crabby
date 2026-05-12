@@ -183,3 +183,55 @@ jobs:
         run: |
           echo "Tag ${{ needs.resolve-version.outputs.tag }} already exists; nothing to release." >> "$GITHUB_STEP_SUMMARY"
           echo "This usually means the master push was a docs/ci/style-only merge that didn't bump the version. The prepare-release workflow on the PR will have reflected this." >> "$GITHUB_STEP_SUMMARY"
+
+  sync-development:
+    name: fast-forward development to master
+    # Runs on every master push regardless of whether the release
+    # itself fired (no-op merges still need dev kept in sync). The
+    # PR merge strategy is rebase, which rewrites the development
+    # commits' SHAs as they land on master. After the merge, dev's
+    # local commits are orphaned from dev's POV: the same changes
+    # exist on master under different SHAs, so dev shows as
+    # "N ahead, N behind" master forever unless we reset it.
+    #
+    # Force-resetting dev to master's HEAD after every master push
+    # collapses that drift. Anyone with work-in-progress on dev
+    # should be working on a feature branch, the dev branch itself
+    # is purely the integration target for the next release PR.
+    runs-on: ubuntu-latest
+    # Always() so we run even when build/publish failed; the dev
+    # reset is independent of whether the release artifacts shipped.
+    if: always()
+    needs: [resolve-version]
+    steps:
+      # SSH key auth so the push can bypass dev's "PRs only" ruleset
+      # via the deploy-key bypass actor (same path prepare-release.yml
+      # uses for its bot commits).
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          ssh-key: ${{ secrets.RELEASE_BOT_SSH_KEY }}
+
+      - name: Configure git committer identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Force-push master HEAD onto development
+        run: |
+          # `+master:development` is the refspec form of force-push
+          # without --force, which some server configs allow even when
+          # plain --force is restricted. Either way, the deploy key is
+          # in dev's bypass-actor list so this push is permitted.
+          master_sha=$(git rev-parse HEAD)
+          echo "Resetting development to master HEAD ($master_sha)"
+          git push origin "+${master_sha}:refs/heads/development"
+
+      - name: Summary
+        run: |
+          echo "### Development branch sync" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Reset \`development\` to master HEAD: \`$(git rev-parse HEAD)\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Any commits sitting on \`development\` that weren't part of this release have been discarded. Future feature work should land on a feature branch, then PR into \`development\`." >> "$GITHUB_STEP_SUMMARY"

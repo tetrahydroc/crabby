@@ -47,6 +47,11 @@ pub struct LogEntry {
 pub enum Message {
     /// Re-read the log file from disk.
     Refresh,
+    /// Truncate the launcher's current-day log file to 0 bytes and
+    /// clear the in-memory view. Only meaningful for `Source::Launcher`
+    /// (Godot owns its log file and may have it open for write; the
+    /// Analyzer feed is synthetic). No-op for the other sources.
+    Clear,
     /// Filter by level. `None` = all.
     LevelSelected(Option<LevelFilter>),
     /// Free-text search.
@@ -55,6 +60,12 @@ pub enum Message {
     /// in the parsed-entries vec (file order). Expanded rows show
     /// the full message + extras key/value list.
     ToggleExpanded(usize),
+    /// Right-clicked a row: copy a human-readable rendering of that
+    /// log line to the clipboard. The string is assembled by the view
+    /// (it has the `LogEntry`) and carried here; `app.rs` intercepts
+    /// this variant and fires `iced::clipboard::write`, since the logs
+    /// tab's `update` is pure and can't issue Tasks itself.
+    CopyLine(String),
     /// Switch which log file feeds the view. Re-reads from disk.
     SourceSelected(Source),
 }
@@ -175,6 +186,7 @@ impl State {
     pub fn update(&mut self, message: Message, analyzer: AnalyzerView<'_>) {
         match message {
             Message::Refresh => self.refresh(analyzer),
+            Message::Clear => self.clear(),
             Message::LevelSelected(f) => self.level = f,
             Message::SearchChanged(s) => self.search = s,
             Message::ToggleExpanded(idx) => {
@@ -182,10 +194,58 @@ impl State {
                     self.expanded.remove(&idx);
                 }
             }
+            // CopyLine is handled in app.rs (it owns the clipboard
+            // Task). If it reaches here, the app didn't intercept it;
+            // nothing to do at the state level.
+            Message::CopyLine(_) => {}
             Message::SourceSelected(s) => {
                 if self.source != s {
                     self.source = s;
                     self.refresh(analyzer);
+                }
+            }
+        }
+    }
+
+    /// Truncate the launcher's current-day log file to 0 bytes and
+    /// drop the in-memory entries. No-op unless the active source is
+    /// `Source::Launcher` — Godot's log belongs to the game process
+    /// (which may have it open for write) and the Analyzer feed has
+    /// no backing file.
+    ///
+    /// `tracing_appender`'s rolling writer holds its own handle to
+    /// the file; truncating from underneath it is safe because the
+    /// writer appends and never seeks, so the next launcher log line
+    /// just lands at offset 0 of the now-empty file. (It does NOT
+    /// re-open per write, so the file stays the same inode; the
+    /// truncate sticks.)
+    fn clear(&mut self) {
+        if !matches!(self.source, Source::Launcher) {
+            return;
+        }
+        let Some(path) = launcher_config::current_log_path() else {
+            return;
+        };
+        match fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&path)
+        {
+            Ok(_) => {
+                self.entries.clear();
+                self.expanded.clear();
+                self.last_path = Some(path);
+                self.populated = true;
+            }
+            Err(e) => {
+                // NotFound just means there's nothing to clear; clear
+                // the view anyway so the gesture isn't a no-op from
+                // the user's POV.
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    self.entries.clear();
+                    self.expanded.clear();
+                } else {
+                    tracing::warn!(path = %path.display(), error = %e, "logs: clear (truncate) failed");
                 }
             }
         }
@@ -217,6 +277,21 @@ impl State {
             .padding([4, 10])
             .style(button_style(p, ButtonKind::Default))
             .on_press(Message::Refresh);
+
+        // Clear only operates on the launcher's own log file. For the
+        // Godot feed (game owns it) and the Analyzer feed (synthetic,
+        // no file) the button is present-but-disabled so the layout
+        // doesn't jump when switching sources; `on_press_maybe(None)`
+        // renders it greyed out.
+        let clear_enabled = matches!(self.source, Source::Launcher);
+        let clear_btn = button(text("Clear").size(11))
+            .padding([4, 10])
+            .style(button_style(p, ButtonKind::Default))
+            .on_press_maybe(if clear_enabled {
+                Some(Message::Clear)
+            } else {
+                None
+            });
 
         // Source toggle - Launcher vs Godot. Pill-button pair styled
         // like the level filter chips.
@@ -252,6 +327,7 @@ impl State {
                 .color(p.fg_2),
             crate::style::hspace(),
             source_pills,
+            clear_btn,
             refresh_btn,
         ]
         .spacing(12)
@@ -399,8 +475,9 @@ impl State {
 }
 
 /// One log row - colored level chip + timestamp + target + message,
-/// plus a chevron column. Click anywhere on the row to expand and
-/// see the full message + structured fields.
+/// plus a chevron column. Left-click anywhere on the row to expand
+/// and see the full message + structured fields; right-click to copy
+/// the line to the clipboard.
 fn log_row<'a>(idx: usize, e: &'a LogEntry, expanded: bool, p: Palette) -> Element<'a, Message> {
     let level_upper = e.level.to_ascii_uppercase();
     let level_color = match level_upper.as_str() {
@@ -464,8 +541,15 @@ fn log_row<'a>(idx: usize, e: &'a LogEntry, expanded: bool, p: Palette) -> Eleme
         })
         .on_press(Message::ToggleExpanded(idx));
 
+    // Right-click anywhere on the row copies the rendered line. The
+    // mouse_area sits OUTSIDE the button so the button still owns
+    // left-click (expand toggle) without contention.
+    let copy_payload = clipboard_line(e);
+
     if !expanded {
-        return header_btn.into();
+        return iced::widget::mouse_area(header_btn)
+            .on_right_press(Message::CopyLine(copy_payload))
+            .into();
     }
 
     // Detail panel: full message + extras.
@@ -514,7 +598,32 @@ fn log_row<'a>(idx: usize, e: &'a LogEntry, expanded: bool, p: Palette) -> Eleme
                 ..Default::default()
             });
 
-    column![header_btn, detail].into()
+    iced::widget::mouse_area(column![header_btn, detail])
+        .on_right_press(Message::CopyLine(copy_payload))
+        .into()
+}
+
+/// Build the string copied to the clipboard when a row is
+/// right-clicked. Human-readable, not the raw JSON line: a `[LEVEL]
+/// timestamp target` prefix, the full (un-truncated, multi-line-safe)
+/// message, and every structured field on its own `key: value` line.
+/// This is what someone would want to paste into a bug report.
+fn clipboard_line(e: &LogEntry) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    let _ = write!(out, "[{}]", e.level.to_ascii_uppercase());
+    if !e.timestamp.is_empty() {
+        let _ = write!(out, " {}", e.timestamp);
+    }
+    if !e.target.is_empty() {
+        let _ = write!(out, " {}", e.target);
+    }
+    out.push_str(": ");
+    out.push_str(&e.message);
+    for (k, v) in &e.extras {
+        let _ = write!(out, "\n  {k}: {v}");
+    }
+    out
 }
 
 /// Shorten a log message for the collapsed row. Cuts at the first
@@ -607,6 +716,10 @@ fn synthesize_analyzer_entries(view: AnalyzerView<'_>) -> Vec<LogEntry> {
             ConflictKind::DuplicateVanillaSwap { .. } => ("ERROR", "duplicate vanilla swap"),
             ConflictKind::FileReplaceCollision { .. } => ("ERROR", "replace_file collision"),
             ConflictKind::AddFileCollision { .. } => ("ERROR", "add_file collision"),
+            ConflictKind::MethodReplaceCollision { .. } => ("ERROR", "replace_method collision"),
+            ConflictKind::FileReplaceShadowsMethod { .. } => {
+                ("ERROR", "replace_file shadows replace_method")
+            }
             ConflictKind::SelfPattern { .. } => unreachable!("filtered above"),
         };
         let mut extras = std::collections::BTreeMap::new();

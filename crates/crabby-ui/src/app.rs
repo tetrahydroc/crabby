@@ -857,6 +857,11 @@ impl App {
                 Task::none()
             }
             Message::Logs(msg) => {
+                // Intercept CopyLine here: the logs tab's update is
+                // pure (returns ()), but copying needs an iced Task.
+                if let crate::tabs::logs::Message::CopyLine(line) = msg {
+                    return iced::clipboard::write(line);
+                }
                 self.logs.update(
                     msg,
                     crate::tabs::logs::AnalyzerView {
@@ -2543,30 +2548,13 @@ async fn run_boot_scan(game_dir: Option<PathBuf>) -> Option<Box<BootScanResult>>
 
         let conflicts = crabby_mod_analyzer::detect_conflicts(&scan.all_intents);
 
-        // Mod-index rebuild now that the analyzer told us which
-        // overlay sources each mod ships. Threading the source
-        // paths through to ModIndexEntry lets the mod-cache rebuild
-        // strip them from the runtime mount, avoiding duplicate
-        // class_name bindings on overlays.
-        let overlay_sources_by_mod_id: std::collections::BTreeMap<String, Vec<String>> = scan
-            .all_intents
-            .iter()
-            .filter(|i| !i.overlay_writes.is_empty())
-            .map(|i| {
-                let sources: Vec<String> = i
-                    .overlay_writes
-                    .iter()
-                    .filter_map(|w| w.source_path.clone())
-                    .collect();
-                (i.mod_id.clone(), sources)
-            })
-            .collect();
-        if let Err(e) = crabby_config::mod_index::rebuild_and_save_from_discovered_with_overlays(
-            &dir,
-            &cfg,
-            &discovered,
-            &overlay_sources_by_mod_id,
-        ) {
+        // Refresh mod_index.cfg with the freshly-discovered enabled
+        // set. The mod-cache rebuild strips `overlays/` from the
+        // runtime mount based on a directory rule alone, so the
+        // index no longer carries per-mod overlay metadata.
+        if let Err(e) =
+            crabby_config::mod_index::rebuild_and_save_from_discovered(&dir, &cfg, &discovered)
+        {
             tracing::warn!(error = %e, "ui: mod_index refresh failed");
         }
 
