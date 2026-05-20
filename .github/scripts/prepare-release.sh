@@ -2,10 +2,16 @@
 # Compute the next version and rendered changelog for a development -> master
 # release PR. Run from the prepare-release.yml workflow on PR open/sync.
 #
+# Each changelog bullet carries: the commit subject (with the
+# conventional-commit verb/scope stripped for display), the author, a
+# link to the commit (and to the squash-merge PR when the `(#N)` suffix
+# is present), and a collapsed <details> block with the commit's body
+# message (trailers like `Co-Authored-By:` stripped).
+#
 # Input environment:
 #   BASE_REF   the PR's base ref (e.g. master)
 #   HEAD_REF   the PR's head ref (e.g. development)
-#   REPO_URL   the repo's https URL, for PR links in the changelog
+#   REPO_URL   the repo's https URL, for commit/PR links in the changelog
 #
 # Output (written to $GITHUB_OUTPUT lines and stdout):
 #   bump=major|minor|patch|none
@@ -48,14 +54,23 @@ old_major="${BASH_REMATCH[1]}"
 old_minor="${BASH_REMATCH[2]}"
 old_patch="${BASH_REMATCH[3]}"
 
-# Walk commits in BASE_REF..HEAD_REF, oldest first, skipping merge commits and
-# version-bump commits authored by the workflow.
-commit_log=$(git log "origin/$BASE_REF..origin/$HEAD_REF" \
-    --no-merges \
-    --reverse \
-    --format='%H%x09%an%x09%s' || true)
-
-# Buckets: each section is a verb -> list of "PR_NUM|subject" lines.
+# Commits are read from `git log` via a NUL-delimited stream piped
+# straight into the loop below (NOT captured into a variable — bash
+# command substitution silently drops NUL bytes, and we need NUL as the
+# inter-record delimiter so a record can contain the newlines of a
+# multi-line commit body). Format per record:
+#   <sha>\t<short-sha>\t<author>\t<subject>\n<body>\0
+# git appends its own newline after each record, so the byte right
+# after a `\0` is `\n` then the next record's `<sha>`; the loop strips
+# that leading newline.
+#
+# Buckets: SECTIONS[verb] is an RS-joined (`\x1e`) list of pre-rendered
+# markdown blocks. RS rather than NUL because a bash variable is a
+# C string and can't hold a NUL; RS is a control char that won't
+# appear in commit text. A block is a bullet line plus, optionally, an
+# indented <details> body (so it spans newlines — that's why we can't
+# just newline-join).
+RS=$'\x1e'
 declare -A SECTIONS
 
 # Counters accumulate across the whole batch. Each contributing commit
@@ -107,7 +122,21 @@ section_header() {
 # Section render order. Anything not listed sorts alphabetically at the end.
 SECTION_ORDER=(feat fix perf chore deps build test style docs ci other)
 
-while IFS=$'\t' read -r sha author subject; do
+while IFS= read -r -d '' record; do
+    # Each record is `<meta>\n<body>`; `<meta>` is the tab-joined
+    # `%H\t%h\t%an\t%s` line, `<body>` is `%b` (may be empty or span
+    # many lines). git appends a newline after each record's NUL, so
+    # the byte after the previous `\0` (i.e. the start of this record)
+    # is a stray `\n` — strip it.
+    record="${record#$'\n'}"
+    [[ -z "$record" ]] && continue
+    meta_line="${record%%$'\n'*}"
+    if [[ "$record" == *$'\n'* ]]; then
+        body="${record#*$'\n'}"
+    else
+        body=""
+    fi
+    IFS=$'\t' read -r sha short_sha author subject <<< "$meta_line"
     [[ -z "$sha" ]] && continue
 
     # Skip self-authored version bumps. The subject shape
@@ -170,7 +199,13 @@ while IFS=$'\t' read -r sha author subject; do
         desc="${desc% (#$pr_num)}"
     fi
 
-    # Build the rendered bullet for this commit.
+    # ---- Render this commit's markdown block. ------------------------
+    # Bullet line:
+    #   - **scope:** description · by author ([`abc1234`](.../commit/abc1234)) ([#N](.../pull/N))
+    # then, if the commit has a body, an indented <details> block with
+    # the body text underneath. NUL-joined into SECTIONS[verb] so the
+    # multi-line body survives the bucket.
+
     line=""
     if [[ -n "$scope" ]]; then
         # Strip the parens from scope for cleaner display.
@@ -179,14 +214,63 @@ while IFS=$'\t' read -r sha author subject; do
         line+="**${scope_clean}:** "
     fi
     line+="$desc"
+    # Author attribution. Drop a `[bot]` suffix so the GitHub Actions
+    # bot doesn't show up verbosely; otherwise show the name as-is.
+    author_clean="${author%\[bot\]}"
+    if [[ -n "$author_clean" ]]; then
+        line+=" · by ${author_clean}"
+    fi
+    # Commit link. Always present (we always have the sha). PR link
+    # appended when the squash-merge suffix gave us a number.
+    if [[ -n "$REPO_URL" ]]; then
+        line+=" ([\`${short_sha}\`](${REPO_URL}/commit/${sha}))"
+    else
+        line+=" (\`${short_sha}\`)"
+    fi
     if [[ -n "$pr_num" && -n "$REPO_URL" ]]; then
         line+=" ([#${pr_num}](${REPO_URL}/pull/${pr_num}))"
     elif [[ -n "$pr_num" ]]; then
         line+=" (#${pr_num})"
     fi
 
-    SECTIONS["$verb"]+="${line}"$'\n'
-done <<< "$commit_log"
+    # Trim trailing trailer lines (Co-Authored-By:, Signed-off-by:) and
+    # surrounding blank lines from the body, then collapse leading/
+    # trailing blank lines. What's left is the human-written body.
+    trimmed_body=""
+    if [[ -n "$body" ]]; then
+        trimmed_body="$(printf '%s\n' "$body" | sed -E '
+            /^[[:space:]]*(Co-Authored-By|Signed-off-by|Co-authored-by):/d
+        ' | sed -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}' | sed -e '/./,$!d')"
+    fi
+
+    block="$line"
+    if [[ -n "$trimmed_body" ]]; then
+        # Indent the body 2 spaces so it nests under the bullet, and
+        # wrap in a collapsed <details> so the changelog stays
+        # scannable. A blank line after <summary> is required for
+        # GitHub to render the body as markdown rather than literal.
+        block+=$'\n'"  <details><summary>commit message</summary>"$'\n'
+        block+=$'\n'  # blank line inside the details block
+        while IFS= read -r bline; do
+            if [[ -z "${bline//[$' \t']/}" ]]; then
+                # Don't indent blank lines — keeps the rendered diff
+                # free of trailing-whitespace-only lines.
+                block+=$'\n'
+            else
+                block+="  ${bline}"$'\n'
+            fi
+        done <<< "$trimmed_body"
+        block+="  </details>"
+    fi
+
+    # RS-join (blocks contain newlines, so we can't newline-join; and a
+    # bash variable can't hold NUL). The leading RS on the first append
+    # produces an empty leading fragment, which the render loop skips.
+    SECTIONS["$verb"]+="${RS}${block}"
+done < <(git log "origin/$BASE_REF..origin/$HEAD_REF" \
+    --no-merges \
+    --reverse \
+    --format='%H%x09%h%x09%an%x09%s%n%b%x00' || true)
 
 # Compute the new version by stacking each counter's accumulated
 # increment onto the corresponding segment of the old version. Patch
@@ -233,10 +317,26 @@ changelog_path="$(mktemp -t crabby-changelog.XXXXXX.md)"
         [[ -z "${SECTIONS[$verb]:-}" ]] && continue
         echo "### $(section_header "$verb")"
         echo
-        # Trailing newline trims to single \n; bullets each begin with "- ".
-        while IFS= read -r line; do
-            [[ -z "$line" ]] && continue
-            echo "- $line"
+        # Each section is an RS-joined list of pre-rendered blocks. A
+        # block is the bullet text (possibly multi-line: bullet line +
+        # an indented <details> body). Prefix the FIRST line of each
+        # block with "- " and pass the rest through verbatim so the
+        # indentation we baked in survives. The leading RS produces an
+        # empty first fragment — skipped by the `-z` guard.
+        while IFS= read -r -d "$RS" block || [[ -n "$block" ]]; do
+            # Skip the empty leading fragment (the join starts with RS),
+            # and any whitespace-only fragment from the herestring's
+            # trailing newline.
+            [[ -z "${block//[$'\n\t ']/}" ]] && continue
+            first=1
+            while IFS= read -r bline; do
+                if (( first )); then
+                    echo "- ${bline}"
+                    first=0
+                else
+                    echo "${bline}"
+                fi
+            done <<< "$block"
         done <<< "${SECTIONS[$verb]}"
         echo
     done

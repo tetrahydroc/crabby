@@ -36,18 +36,57 @@ use crabby_error::{CrabbyError, Result};
 /// A single `[autoload]` entry from `mod.txt`.
 ///
 /// Godot autoload rows look like `Name="*res://path/to/script.gd"`. The
-/// leading `*` on the path means "singleton, auto-instance at startup."
-/// The `*` is stripped for internal storage and re-emitted when registering.
+/// path may carry up to two leading marker chars, in any order:
+///   * `*` is Godot's "singleton, auto-instance at startup" marker.
+///   * `!` is Metro / Vostok Mod Loader's `autoload_prepend` marker
+///     ("register this autoload before the others"). Crabby's runtime
+///     boot (`shim/lib/boot.gd`) honors the ordering hint; nothing on
+///     the Rust side needs it, but it MUST be stripped from `path`
+///     because `load("!res://...")` mangles the protocol.
+/// Both markers are stripped for internal storage; `singleton` and
+/// `prepend` record whether each was present (for accurate round-trip
+/// and so the runtime can replay the ordering intent).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Autoload {
     /// Name the autoload is registered as (accessible as a global in `GDScript`).
     pub name: String,
-    /// Resource path, without the leading `*` singleton marker.
+    /// Resource path, without any leading `*` / `!` marker chars.
     /// Typically `res://<mod_dir>/Script.gd`.
     pub path: String,
     /// Whether the original entry was marked as a singleton (`*` prefix).
     /// Almost always `true` in the wild; kept for accurate round-trip.
     pub singleton: bool,
+    /// Whether the original entry carried the `!` `autoload_prepend`
+    /// marker (VML/MML convention). Honored at runtime by `boot.gd`.
+    pub prepend: bool,
+}
+
+/// One MML-compat `[hooks]` declaration: a vanilla script and the set
+/// of methods the mod wants wrapped on it.
+///
+/// MML/VML mods declare this section in `mod.txt`:
+///
+/// ```ini
+/// [hooks]
+/// "res://Scripts/Inputs.gd" = "CreateActions,ResetActions"
+/// "res://Scripts/Interface.gd" = "Use,Combine,Hover"
+/// ```
+///
+/// Crabby uses these declarations as a static signal that the mod
+/// will (later, at runtime) register `<script>-<method>-*` hooks via
+/// `_lib.hook(...)`. The analyzer's existing `_lib.hook("literal", ...)`
+/// regex misses calls where the hook name is computed or passes through
+/// a helper function (like `register_hook(hook_name, ...)`); the
+/// `[hooks]` section is the mod author's explicit "wrap these"
+/// declaration that doesn't depend on regex matching the call site.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HookDeclaration {
+    /// Target script (e.g. `"res://Scripts/Inputs.gd"`), exactly as the
+    /// mod author wrote it.
+    pub target_script: String,
+    /// Method names on `target_script` to wrap. Each method maps to a
+    /// hook base of `<script-stem-lowercased>-<method-lowercased>`.
+    pub methods: Vec<String>,
 }
 
 /// Parsed `mod.txt` contents.
@@ -170,6 +209,39 @@ impl ModManifest {
             .map_err(|s| CrabbyError::io_at(archive_path.to_path_buf(), s))?;
         Self::parse(&mod_txt_bytes)
     }
+
+    /// Extract the MML-compat `[hooks]` section as a typed list. Returns
+    /// an empty `Vec` when the section is absent (crabby-native mods
+    /// that register hooks purely via `_lib.hook(...)`).
+    ///
+    /// Each KV is parsed as `target_script = "MethodA,MethodB,..."`.
+    /// Empty / whitespace-only method tokens are dropped. The section
+    /// stays preserved in `extra_sections` for diagnostics — this is an
+    /// additional typed view, not a replacement.
+    #[must_use]
+    pub fn hook_declarations(&self) -> Vec<HookDeclaration> {
+        let Some(section) = self.extra_sections.get("hooks") else {
+            return Vec::new();
+        };
+        let mut out = Vec::with_capacity(section.len());
+        for (target_script, methods_raw) in section {
+            let target_script = target_script.trim_matches('"').to_string();
+            let methods: Vec<String> = methods_raw
+                .trim_matches('"')
+                .split(',')
+                .map(|m| m.trim().to_string())
+                .filter(|m| !m.is_empty())
+                .collect();
+            if methods.is_empty() {
+                continue;
+            }
+            out.push(HookDeclaration {
+                target_script,
+                methods,
+            });
+        }
+        out
+    }
 }
 
 /// What kind of on-disk thing the mod was discovered as. Affects how
@@ -236,13 +308,28 @@ fn parse_autoloads(section: &BTreeMap<String, String>) -> Vec<Autoload> {
     section
         .iter()
         .map(|(name, path)| {
-            let (singleton, stripped) = path
-                .strip_prefix('*')
-                .map_or((false, path.as_str()), |s| (true, s));
+            // Peel a run of leading `*` / `!` marker chars in any order,
+            // recording which we saw. Real-world entries carry at most
+            // one of each (e.g. `*res://...`, `!res://...`, `*!res://...`).
+            let mut rest = path.as_str();
+            let mut singleton = false;
+            let mut prepend = false;
+            loop {
+                if let Some(s) = rest.strip_prefix('*') {
+                    singleton = true;
+                    rest = s;
+                } else if let Some(s) = rest.strip_prefix('!') {
+                    prepend = true;
+                    rest = s;
+                } else {
+                    break;
+                }
+            }
             Autoload {
                 name: name.clone(),
-                path: stripped.to_owned(),
+                path: rest.to_owned(),
                 singleton,
+                prepend,
             }
         })
         .collect()
@@ -370,7 +457,49 @@ NoStar="res://x.gd"
 "#;
         let m = ModManifest::parse_str(src).unwrap();
         assert!(!m.autoloads[0].singleton);
+        assert!(!m.autoloads[0].prepend);
         assert_eq!(m.autoloads[0].path, "res://x.gd");
+    }
+
+    #[test]
+    fn bang_prefix_marks_prepend_and_is_stripped() {
+        // VML / MML `autoload_prepend` convention: a leading `!` on the
+        // path. The marker is recorded and stripped so the resolved path
+        // is a valid `res://` URI.
+        let src = r#"[mod]
+id="lootlight"
+name="LootLight"
+version="2.0.3"
+
+[autoload]
+LootLightMain="!res://LootLight/LootLightMain.gd"
+"#;
+        let m = ModManifest::parse_str(src).unwrap();
+        let a = &m.autoloads[0];
+        assert_eq!(a.name, "LootLightMain");
+        assert_eq!(a.path, "res://LootLight/LootLightMain.gd");
+        assert!(a.prepend);
+        assert!(!a.singleton);
+    }
+
+    #[test]
+    fn star_and_bang_combine_in_any_order() {
+        let src = r#"[mod]
+id="x"
+name="X"
+version="1"
+
+[autoload]
+A="*!res://a.gd"
+B="!*res://b.gd"
+"#;
+        let m = ModManifest::parse_str(src).unwrap();
+        let a = m.autoloads.iter().find(|x| x.name == "A").unwrap();
+        let b = m.autoloads.iter().find(|x| x.name == "B").unwrap();
+        assert_eq!(a.path, "res://a.gd");
+        assert!(a.singleton && a.prepend);
+        assert_eq!(b.path, "res://b.gd");
+        assert!(b.singleton && b.prepend);
     }
 
     #[test]
@@ -391,5 +520,77 @@ version="1"
         let src = "[mod]\nid=\"\"\nname=\"x\"\nversion=\"1\"\n";
         let err = ModManifest::parse_str(src).unwrap_err();
         assert!(matches!(err, CrabbyError::Manifest { .. }));
+    }
+
+    #[test]
+    fn hook_declarations_returns_empty_when_section_absent() {
+        let src = r#"[mod]
+id="x"
+name="X"
+version="1"
+"#;
+        let m = ModManifest::parse_str(src).unwrap();
+        assert!(m.hook_declarations().is_empty());
+    }
+
+    #[test]
+    fn hook_declarations_parses_mml_section() {
+        // The likhos-tacmed shape that exposed the wrapper-elision bug:
+        // declares vanilla scripts/methods the mod plans to hook via
+        // runtime `_lib.hook(...)` calls our analyzer regex can't see
+        // (the calls pass a variable, not a string literal).
+        let src = r#"[mod]
+id="likhos-tacmed"
+name="Likho's TacMed"
+version="1.3.131"
+
+[autoload]
+LikhosTacMed="res://mods/likhos-tacmed/Scripts/Main.gd"
+
+[hooks]
+"res://Scripts/Interface.gd"="Use,Combine,Hover"
+"res://Scripts/Inputs.gd"="CreateActions,ResetActions"
+"#;
+        let m = ModManifest::parse_str(src).unwrap();
+        let decls = m.hook_declarations();
+        assert_eq!(decls.len(), 2);
+        let inputs = decls
+            .iter()
+            .find(|d| d.target_script == "res://Scripts/Inputs.gd")
+            .expect("Inputs.gd decl");
+        assert_eq!(inputs.methods, vec!["CreateActions", "ResetActions"]);
+        let interface = decls
+            .iter()
+            .find(|d| d.target_script == "res://Scripts/Interface.gd")
+            .expect("Interface.gd decl");
+        assert_eq!(interface.methods, vec!["Use", "Combine", "Hover"]);
+        // Section stays preserved in extra_sections too.
+        assert!(m.extra_sections.contains_key("hooks"));
+    }
+
+    #[test]
+    fn hook_declarations_trims_whitespace_and_skips_empty_methods() {
+        let src = r#"[mod]
+id="x"
+name="X"
+version="1"
+
+[hooks]
+"res://Scripts/Foo.gd"=" A , B ,  , C "
+"res://Scripts/Empty.gd"=""
+"#;
+        let m = ModManifest::parse_str(src).unwrap();
+        let decls = m.hook_declarations();
+        let foo = decls
+            .iter()
+            .find(|d| d.target_script == "res://Scripts/Foo.gd")
+            .unwrap();
+        assert_eq!(foo.methods, vec!["A", "B", "C"]);
+        // Empty-methods entry is dropped entirely.
+        assert!(
+            !decls
+                .iter()
+                .any(|d| d.target_script == "res://Scripts/Empty.gd")
+        );
     }
 }

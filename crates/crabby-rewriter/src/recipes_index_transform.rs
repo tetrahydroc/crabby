@@ -61,7 +61,12 @@ mod tests {
     #[test]
     fn appends_categorized_index_block() {
         let out = transform(RECIPES_SCHEMA_FILENAME, VANILLA_RECIPES);
-        assert!(out.contains("var _id_index: Dictionary = {}"), "{out}");
+        assert!(
+            out.contains("var _id_index_storage: Dictionary = {}"),
+            "{out}"
+        );
+        assert!(out.contains("var _id_index: Dictionary:"), "{out}");
+        assert!(!out.contains("func _init"), "{out}");
         assert!(out.contains(r#"for cat in ["consumables", "medical", "equipment", "weapons", "electronics", "misc", "furniture"]:"#), "{out}");
         assert!(
             out.contains("func _index_add(id: String, entry: RecipeData, category: String)"),

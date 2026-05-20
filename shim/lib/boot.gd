@@ -638,18 +638,49 @@ func _quote_unquoted_hooks_values(text: String) -> String:
 
 ## For each entry under `[autoload]` in the mod's manifest, load the
 ## referenced script/scene and add it as a child of /root.
+##
+## Autoload path prefixes (any combination, any order, stripped before
+## load):
+##   `*`  Godot's own "instantiate as a Node singleton" marker. We
+##        already instantiate every mod autoload as a Node, so it's a
+##        no-op for us beyond needing to be stripped off the path.
+##   `!`  Metro / Vostok Mod Loader's `autoload_prepend` marker: the
+##        author wants this autoload registered BEFORE other autoloads.
+##        Crabby instantiates mod autoloads via deferred `add_child`
+##        on the next idle frame (alongside vanilla autoloads), so the
+##        absolute "before vanilla" guarantee can't be honored, but we
+##        DO process `!`-prefixed entries first within the mod so they
+##        win against the mod's own non-prefixed autoloads. Without
+##        stripping the `!`, `load("!res://...")` mangles the path
+##        ("!res:/...") and the autoload silently fails to load.
 func _instantiate_mod_autoloads(mod_id: String, manifest: ConfigFile) -> int:
 	if not manifest.has_section("autoload"):
 		return 0
-	var count := 0
+	# Two passes: prepend-marked autoloads first, then the rest. Order
+	# within each pass follows manifest key order.
+	var prepend_entries: Array = []
+	var normal_entries: Array = []
 	for autoload_name in manifest.get_section_keys("autoload"):
 		var raw_path: String = manifest.get_value("autoload", autoload_name, "")
 		if raw_path.is_empty():
 			continue
+		# Strip a run of leading `*` / `!` prefix chars in any order.
 		var res_path := raw_path
-		if res_path.begins_with("*"):
+		var is_prepend := false
+		while res_path.begins_with("*") or res_path.begins_with("!"):
+			if res_path.begins_with("!"):
+				is_prepend = true
 			res_path = res_path.substr(1)
-		if _instantiate_one_autoload(mod_id, autoload_name, res_path):
+		if is_prepend:
+			prepend_entries.append([autoload_name, res_path])
+		else:
+			normal_entries.append([autoload_name, res_path])
+	var count := 0
+	for e in prepend_entries:
+		if _instantiate_one_autoload(mod_id, e[0], e[1]):
+			count += 1
+	for e in normal_entries:
+		if _instantiate_one_autoload(mod_id, e[0], e[1]):
 			count += 1
 	return count
 
