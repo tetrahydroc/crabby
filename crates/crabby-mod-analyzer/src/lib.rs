@@ -61,6 +61,20 @@ pub struct ModIntent {
     pub classic_patterns: Vec<ClassicPattern>,
     /// Per-file file-name -> line-count, for context in the report.
     pub files_scanned: Vec<ScannedFile>,
+    /// Hook BASE names (e.g. `"inputs-createactions"`) declared
+    /// statically via the MML-compat `[hooks]` section of `mod.txt`.
+    /// These complement the call-site-scanned [`HookIntent`]s for mods
+    /// whose `_lib.hook(...)` calls pass a variable (or go through a
+    /// helper function) that the call-site regex can't see. Each base
+    /// is treated as "all four hook kinds may be registered" by
+    /// [`collect_hooked_method_kinds`], guaranteeing the bake emits a
+    /// full wrapper. The MML `[hooks]` section doesn't specify kind;
+    /// "all four" is the safe conservative choice.
+    ///
+    /// Set by callers that have access to the parsed [`ModManifest`]
+    /// (see [`apply_mml_hook_declarations`]). Empty for crabby-native
+    /// mods that omit the section.
+    pub mml_hook_bases: Vec<String>,
 }
 
 /// One scanned file, for report aggregation only.
@@ -2167,6 +2181,19 @@ where
                 HookKind::Unknown => {}
             }
         }
+        // Fold in MML-style static declarations. The `[hooks]` section
+        // doesn't specify kind, so each base is conservatively marked
+        // as all four kinds present — guarantees the bake emits a
+        // full wrapper with every dispatch line, since we can't know
+        // at bake time which kinds the mod will actually register at
+        // runtime.
+        for base in &intent.mml_hook_bases {
+            let entry = out.entry(base.clone()).or_default();
+            entry.pre = true;
+            entry.post = true;
+            entry.callback = true;
+            entry.replace = true;
+        }
     }
     out
 }
@@ -2209,6 +2236,47 @@ pub fn analyze_mod<'a>(
 ) -> ModIntent {
     let collected: Vec<(&str, &str)> = files.into_iter().collect();
     analyze_mod_with_schema(mod_id, collected.iter().copied(), None)
+}
+
+/// Fold the MML-compat `[hooks]` section of `manifest` into `intent`,
+/// computing the hook BASE name for each (script, method) pair and
+/// appending to `intent.mml_hook_bases`.
+///
+/// The base derivation matches `crabby_rewriter::script_prefix` +
+/// `crabby_rewriter::hook_base`: file-stem of the target script,
+/// lowercased, joined with the method name lowercased by a `-`. So
+/// `("res://Scripts/Inputs.gd", "CreateActions")` -> `"inputs-createactions"`.
+///
+/// Called by analyzer-bootstrap paths that have the manifest in hand
+/// (see [`crate::discover`]). Does nothing when the manifest has no
+/// `[hooks]` section.
+pub fn apply_mml_hook_declarations(
+    manifest: &crabby_manifest::ModManifest,
+    intent: &mut ModIntent,
+) {
+    for decl in manifest.hook_declarations() {
+        let prefix = script_prefix_from_res_path(&decl.target_script);
+        if prefix.is_empty() {
+            continue;
+        }
+        for method in &decl.methods {
+            // Mirror `crabby_rewriter::hook_base`: `<prefix>-<method-lc>`.
+            let base = format!("{prefix}-{}", method.to_ascii_lowercase());
+            intent.mml_hook_bases.push(base);
+        }
+    }
+}
+
+/// Extract the script-prefix used by the rewriter from a `res://...gd`
+/// path. Strips the `res://` protocol, takes the file stem
+/// (`.../Foo.gd` -> `Foo`), lowercases. Returns an empty string for
+/// paths that don't end in `.gd` (defensive; MML declarations always
+/// reference `.gd` scripts in practice).
+fn script_prefix_from_res_path(path: &str) -> String {
+    let trimmed = path.trim_start_matches("res://");
+    let filename = trimmed.rsplit('/').next().unwrap_or(trimmed);
+    let stem = filename.strip_suffix(".gd").unwrap_or("");
+    stem.to_ascii_lowercase()
 }
 
 /// Like [`analyze_mod`] but uses a vanilla schema to grade
@@ -3143,5 +3211,101 @@ func _ready() -> void:
         assert!(mod_has_conflicts(&conflicts, "a"));
         assert!(mod_has_conflicts(&conflicts, "b"));
         assert!(!mod_has_conflicts(&conflicts, "c"));
+    }
+
+    // --- MML [hooks] static-declaration fallback ----------------------------
+
+    #[test]
+    fn mml_hook_bases_derive_correctly_from_res_paths() {
+        // ScriptStem -> lowercase, joined with method-lowercase by `-`.
+        assert_eq!(
+            script_prefix_from_res_path("res://Scripts/Inputs.gd"),
+            "inputs"
+        );
+        assert_eq!(
+            script_prefix_from_res_path("res://Scripts/Interface.gd"),
+            "interface"
+        );
+        // Nested dirs and inconsistent casing: only the file-stem matters.
+        assert_eq!(
+            script_prefix_from_res_path("res://Some/Deep/Path/AiSpawner.gd"),
+            "aispawner",
+        );
+        // Non-.gd path: empty (defensive).
+        assert_eq!(script_prefix_from_res_path("res://Foo.tscn"), "");
+        // Missing protocol prefix is fine too.
+        assert_eq!(script_prefix_from_res_path("Inputs.gd"), "inputs");
+    }
+
+    #[test]
+    fn apply_mml_hook_declarations_appends_bases() {
+        use crabby_manifest::ModManifest;
+        // The likhos-tacmed shape: hooks declared via [hooks] section
+        // for vanilla scripts the mod plans to hook at runtime through
+        // a helper function the call-site regex can't see.
+        let manifest = ModManifest::parse_str(
+            r#"[mod]
+id="likhos-tacmed"
+name="x"
+version="1"
+
+[autoload]
+LikhosTacMed="res://mods/likhos-tacmed/Scripts/Main.gd"
+
+[hooks]
+"res://Scripts/Inputs.gd"="CreateActions,ResetActions"
+"res://Scripts/Interface.gd"="Use,Combine,Hover"
+"#,
+        )
+        .unwrap();
+        let mut intent = ModIntent::default();
+        apply_mml_hook_declarations(&manifest, &mut intent);
+        // Five bases: 2 from Inputs.gd + 3 from Interface.gd.
+        let mut bases = intent.mml_hook_bases.clone();
+        bases.sort();
+        assert_eq!(
+            bases,
+            vec![
+                "inputs-createactions",
+                "inputs-resetactions",
+                "interface-combine",
+                "interface-hover",
+                "interface-use",
+            ],
+        );
+    }
+
+    #[test]
+    fn mml_hook_bases_yield_all_four_kinds_in_aggregator() {
+        // collect_hooked_method_kinds should mark every kind present
+        // for MML bases, even when no call-site HookIntent exists —
+        // because the [hooks] section doesn't specify kind and we
+        // need the bake to emit a full wrapper.
+        let intent = ModIntent {
+            mod_id: "m".into(),
+            mml_hook_bases: vec!["inputs-createactions".into()],
+            ..Default::default()
+        };
+        let map = collect_hooked_method_kinds(std::slice::from_ref(&intent));
+        let entry = map.get("inputs-createactions").expect("base registered");
+        assert!(entry.pre);
+        assert!(entry.post);
+        assert!(entry.callback);
+        assert!(entry.replace);
+    }
+
+    #[test]
+    fn mml_bases_compose_with_call_site_hooks() {
+        // A mod whose source has one explicit `_lib.hook("foo-bar-pre", ...)`
+        // AND declares the same base via MML [hooks] should end up with
+        // every flag set: pre from the call site, plus all four from MML.
+        let mut intent = analyze_mod(
+            "m",
+            [("Main.gd", r#"_lib.hook("foo-bar-pre", _on_bar_pre)"#)],
+        );
+        intent.mml_hook_bases.push("foo-bar".into());
+        let map = collect_hooked_method_kinds(std::slice::from_ref(&intent));
+        let entry = map.get("foo-bar").expect("foo-bar base");
+        assert!(entry.pre && entry.post && entry.callback && entry.replace);
     }
 }

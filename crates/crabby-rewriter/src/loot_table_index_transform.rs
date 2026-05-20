@@ -5,7 +5,8 @@
 //! tutorial tables. Each has `@export var items: Array[ItemData]`.
 //!
 //! Injecting onto the shared class means every LootTable instance gets
-//! its own per-instance `_id_index` populated at `_init`. That covers:
+//! its own per-instance `_id_index`, built lazily on first access (see
+//! `id_index_transform` for why not at `_init`). That covers:
 //!
 //! - **Items registry** (LT_Master), `lib.has("items", "AKM")` reads
 //!   `LT_Master._id_index["AKM"]` instead of walking the array.
@@ -52,7 +53,13 @@ mod tests {
     #[test]
     fn appends_index_block_keyed_by_file() {
         let out = transform(LOOT_TABLE_SCHEMA_FILENAME, VANILLA_LOOT_TABLE);
-        assert!(out.contains("var _id_index: Dictionary = {}"), "{out}");
+        // Lazy id-index: backing storage + property getter, no `_init`.
+        assert!(
+            out.contains("var _id_index_storage: Dictionary = {}"),
+            "{out}"
+        );
+        assert!(out.contains("var _id_index: Dictionary:"), "{out}");
+        assert!(!out.contains("func _init"), "{out}");
         assert!(out.contains("for r in items:"), "{out}");
         assert!(out.contains(r#"var v: Variant = r.get("file")"#), "{out}");
         assert!(

@@ -38,7 +38,12 @@ mod tests {
     #[test]
     fn appends_single_index_block() {
         let out = transform(EVENTS_SCHEMA_FILENAME, VANILLA_EVENTS);
-        assert!(out.contains("var _id_index: Dictionary = {}"), "{out}");
+        assert!(
+            out.contains("var _id_index_storage: Dictionary = {}"),
+            "{out}"
+        );
+        assert!(out.contains("var _id_index: Dictionary:"), "{out}");
+        assert!(!out.contains("func _init"), "{out}");
         assert!(out.contains("for r in events:"), "{out}");
         assert!(
             out.contains("func _index_add(id: String, entry: EventData)"),

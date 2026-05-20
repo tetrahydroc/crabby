@@ -79,7 +79,15 @@ pub fn transform(source: &str, cfg: &IdIndexConfig) -> String {
     if !looks_like_vanilla(source, cfg) {
         return source.to_string();
     }
-    if source.contains("func _init") || source.contains("var _id_index") {
+    // Idempotency: if the script already carries the injected index
+    // (its storage var, or a leftover `func _init` from the old
+    // eager-build shape), don't re-inject. A future vanilla schema that
+    // happens to declare its own `_init` also short-circuits here, which
+    // is the safe choice — better to skip than to corrupt.
+    if source.contains("_id_index_storage")
+        || source.contains("var _id_index")
+        || source.contains("func _init")
+    {
         return source.to_string();
     }
 
@@ -117,25 +125,41 @@ fn looks_like_vanilla(source: &str, cfg: &IdIndexConfig) -> bool {
 fn render_block(cfg: &IdIndexConfig) -> String {
     let mut s = String::with_capacity(1024);
     s.push_str("# --- crabby id-index (injected at bake) -------------------------------\n");
-    s.push_str("# Runtime-only lookup: file-stem of resource_path -> ");
+    s.push_str("# Runtime-only lookup: ");
     match cfg.shape {
-        IndexShape::Single { .. } => s.push_str(cfg.element_type),
-        IndexShape::Categorized { .. } => s.push_str("{recipe, category}"),
+        IndexShape::Single { .. } => {
+            s.push_str("id -> ");
+            s.push_str(cfg.element_type);
+        }
+        IndexShape::Categorized { .. } => s.push_str("id -> {recipe, category}"),
     };
-    s.push_str(".\n# Built at _init from the typed-Array data. Mod registrations call\n");
-    s.push_str("# _index_add to keep it in sync; the typed Array(s) remain canonical.\n");
-    s.push_str("var _id_index: Dictionary = {}\n\n\n");
+    s.push_str(".\n#\n");
+    s.push_str("# Populated LAZILY on first access via the `_id_index` property\n");
+    s.push_str("# getter, NOT at `_init`. Godot constructs a Resource (runs\n");
+    s.push_str("# `_init`) BEFORE assigning its `@export`ed properties from the\n");
+    s.push_str("# `.tres`, so an `_init`-time build would walk an empty Array.\n");
+    s.push_str("# The getter defers the build until something actually reads the\n");
+    s.push_str("# index, by which point the typed Array(s) are populated. Mod\n");
+    s.push_str("# registrations call `_index_add` / `_index_set` / `_index_remove`\n");
+    s.push_str("# to keep it in sync afterwards; the typed Array(s) stay canonical.\n");
+    s.push_str("var _id_index_storage: Dictionary = {}\n");
+    s.push_str("var _id_index_built: bool = false\n");
+    s.push_str("var _id_index: Dictionary:\n\tget = _get_id_index\n\n\n");
 
-    s.push_str("func _init() -> void:\n\t_rebuild_id_index()\n\n\n");
+    s.push_str("func _get_id_index() -> Dictionary:\n");
+    s.push_str("\tif not _id_index_built:\n\t\t_rebuild_id_index()\n");
+    s.push_str("\treturn _id_index_storage\n\n\n");
 
-    s.push_str("func _rebuild_id_index() -> void:\n\t_id_index.clear()\n");
+    s.push_str("func _rebuild_id_index() -> void:\n");
+    s.push_str("\t_id_index_built = true\n");
+    s.push_str("\t_id_index_storage.clear()\n");
     match cfg.shape {
         IndexShape::Single { field } => {
             s.push_str(&format!("\tif not ({field} is Array):\n\t\treturn\n"));
             s.push_str(&format!("\tfor r in {field}:\n"));
             s.push_str("\t\tvar id: String = _derive_id(r)\n");
             s.push_str("\t\tif id.is_empty():\n\t\t\tcontinue\n");
-            s.push_str("\t\t_id_index[id] = r\n\n\n");
+            s.push_str("\t\t_id_index_storage[id] = r\n\n\n");
         }
         IndexShape::Categorized { fields } => {
             // Emit a literal Array[String] of the field names so the
@@ -155,7 +179,7 @@ fn render_block(cfg: &IdIndexConfig) -> String {
             s.push_str("\t\tfor r in arr:\n");
             s.push_str("\t\t\tvar id: String = _derive_id(r)\n");
             s.push_str("\t\t\tif id.is_empty():\n\t\t\t\tcontinue\n");
-            s.push_str("\t\t\t_id_index[id] = {\"recipe\": r, \"category\": cat}\n\n\n");
+            s.push_str("\t\t\t_id_index_storage[id] = {\"recipe\": r, \"category\": cat}\n\n\n");
         }
     }
 
@@ -177,25 +201,32 @@ fn render_block(cfg: &IdIndexConfig) -> String {
 
     s.push_str("# Maintenance helpers used by Lib/shim. Caller is responsible for\n");
     s.push_str("# keeping the typed Array(s) in sync; these only touch the index.\n");
+    s.push_str("# Each ensures the base index is built first (via the getter), so a\n");
+    s.push_str("# mod registration that lands before any vanilla read isn't wiped\n");
+    s.push_str("# by the subsequent lazy rebuild.\n");
     match cfg.shape {
         IndexShape::Single { .. } => {
             let elem = cfg.element_type;
             s.push_str(&format!(
-                "func _index_add(id: String, entry: {elem}) -> void:\n\t_id_index[id] = entry\n\n\n"
+                "func _index_add(id: String, entry: {elem}) -> void:\n\t_get_id_index()[id] = entry\n\n\n"
             ));
-            s.push_str("func _index_remove(id: String) -> void:\n\t_id_index.erase(id)\n\n\n");
+            s.push_str(
+                "func _index_remove(id: String) -> void:\n\t_get_id_index().erase(id)\n\n\n",
+            );
             s.push_str(&format!(
-                "func _index_set(id: String, entry: {elem}) -> void:\n\t_id_index[id] = entry\n"
+                "func _index_set(id: String, entry: {elem}) -> void:\n\t_get_id_index()[id] = entry\n"
             ));
         }
         IndexShape::Categorized { .. } => {
             let elem = cfg.element_type;
             s.push_str(&format!(
-                "func _index_add(id: String, entry: {elem}, category: String) -> void:\n\t_id_index[id] = {{\"recipe\": entry, \"category\": category}}\n\n\n"
+                "func _index_add(id: String, entry: {elem}, category: String) -> void:\n\t_get_id_index()[id] = {{\"recipe\": entry, \"category\": category}}\n\n\n"
             ));
-            s.push_str("func _index_remove(id: String) -> void:\n\t_id_index.erase(id)\n\n\n");
+            s.push_str(
+                "func _index_remove(id: String) -> void:\n\t_get_id_index().erase(id)\n\n\n",
+            );
             s.push_str(&format!(
-                "func _index_set(id: String, entry: {elem}, category: String) -> void:\n\t_id_index[id] = {{\"recipe\": entry, \"category\": category}}\n"
+                "func _index_set(id: String, entry: {elem}, category: String) -> void:\n\t_get_id_index()[id] = {{\"recipe\": entry, \"category\": category}}\n"
             ));
         }
     }
@@ -217,15 +248,25 @@ mod tests {
         };
         let src = "extends Resource\nclass_name Events\n@export var events: Array[EventData]\n";
         let out = transform(src, &cfg);
-        assert!(out.contains("var _id_index: Dictionary = {}"), "{out}");
-        assert!(out.contains("func _init() -> void:"), "{out}");
+        // Lazy shape: backing storage + built flag + property getter,
+        // no `_init`.
+        assert!(
+            out.contains("var _id_index_storage: Dictionary = {}"),
+            "{out}"
+        );
+        assert!(out.contains("var _id_index_built: bool = false"), "{out}");
+        assert!(out.contains("var _id_index: Dictionary:"), "{out}");
+        assert!(out.contains("get = _get_id_index"), "{out}");
+        assert!(!out.contains("func _init"), "{out}");
+        assert!(out.contains("func _get_id_index() -> Dictionary:"), "{out}");
         assert!(out.contains("func _rebuild_id_index() -> void:"), "{out}");
         assert!(out.contains("for r in events:"), "{out}");
-        assert!(out.contains("_id_index[id] = r"), "{out}");
+        assert!(out.contains("_id_index_storage[id] = r"), "{out}");
         assert!(
             out.contains("func _index_add(id: String, entry: EventData)"),
             "{out}"
         );
+        assert!(out.contains("_get_id_index()[id] = entry"), "{out}");
         assert!(out.contains("func _index_remove(id: String)"), "{out}");
     }
 
@@ -247,11 +288,15 @@ mod tests {
         );
         assert!(out.contains("var arr: Variant = get(cat)"), "{out}");
         assert!(
-            out.contains(r#"_id_index[id] = {"recipe": r, "category": cat}"#),
+            out.contains(r#"_id_index_storage[id] = {"recipe": r, "category": cat}"#),
             "{out}"
         );
         assert!(
             out.contains("func _index_add(id: String, entry: RecipeData, category: String)"),
+            "{out}"
+        );
+        assert!(
+            out.contains(r#"_get_id_index()[id] = {"recipe": entry, "category": category}"#),
             "{out}"
         );
     }

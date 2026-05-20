@@ -6,10 +6,11 @@
 //! tax / etc. metadata.
 //!
 //! Injecting onto the shared class means every TraderData instance gets
-//! its own per-instance `_id_index` of TaskData entries, populated at
-//! `_init` from the `tasks` array. That gives lib's trader_tasks
-//! registry per-trader-keyed lookup of vanilla tasks. Mod-registered
-//! tasks live under their mod-supplied id in the same index.
+//! its own per-instance `_id_index` of TaskData entries, built lazily
+//! on first access from the `tasks` array (see `id_index_transform` for
+//! why not at `_init`). That gives lib's trader_tasks registry
+//! per-trader-keyed lookup of vanilla tasks. Mod-registered tasks live
+//! under their mod-supplied id in the same index.
 //!
 //! Id derivation: file-stem of `task.resource_path`. Vanilla tasks live
 //! at paths like `res://Traders/Generalist/Task_X.tres`; the stem
@@ -51,7 +52,12 @@ mod tests {
     #[test]
     fn appends_index_block_keyed_by_path_stem() {
         let out = transform(TRADER_DATA_SCHEMA_FILENAME, VANILLA_TRADER_DATA);
-        assert!(out.contains("var _id_index: Dictionary = {}"), "{out}");
+        assert!(
+            out.contains("var _id_index_storage: Dictionary = {}"),
+            "{out}"
+        );
+        assert!(out.contains("var _id_index: Dictionary:"), "{out}");
+        assert!(!out.contains("func _init"), "{out}");
         assert!(out.contains("for r in tasks:"), "{out}");
         assert!(out.contains("get_basename"), "{out}");
         assert!(

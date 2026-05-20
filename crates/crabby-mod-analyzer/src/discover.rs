@@ -13,7 +13,7 @@ use std::path::Path;
 use crabby_error::{CrabbyError, Result};
 use crabby_manifest::{DiscoveredMod, ModSource};
 
-use crate::{ModIntent, VanillaSchema, analyze_mod_with_schema};
+use crate::{ModIntent, VanillaSchema, analyze_mod_with_schema, apply_mml_hook_declarations};
 
 /// Open a discovered mod's archive (vmz/zip) or folder root and yield
 /// `(in-mod-relative-filename, source)` pairs for every `.gd` file.
@@ -247,11 +247,12 @@ pub fn scan_active_profile(game_dir: &Path) -> Result<BootScan> {
         }
         match read_mod_scripts(d) {
             Ok(files) => {
-                let intent = analyze_mod_with_schema(
+                let mut intent = analyze_mod_with_schema(
                     &d.manifest.id,
                     files.iter().map(|(n, s)| (n.as_str(), s.as_str())),
                     None,
                 );
+                apply_mml_hook_declarations(&d.manifest, &mut intent);
                 all_intents.push(intent);
             }
             Err(e) => {
@@ -261,10 +262,15 @@ pub fn scan_active_profile(game_dir: &Path) -> Result<BootScan> {
                     error = %e,
                     "analyzer: failed to read mod scripts; skipping",
                 );
-                all_intents.push(ModIntent {
+                // Even when the script scan failed, honor any MML
+                // `[hooks]` declarations from `mod.txt` — those don't
+                // depend on the script bytes.
+                let mut intent = ModIntent {
                     mod_id: d.manifest.id.clone(),
                     ..Default::default()
-                });
+                };
+                apply_mml_hook_declarations(&d.manifest, &mut intent);
+                all_intents.push(intent);
             }
         }
     }
@@ -304,11 +310,12 @@ fn analyze_active_profile_inner(
         }
         match read_mod_scripts(d) {
             Ok(files) => {
-                let intent = analyze_mod_with_schema(
+                let mut intent = analyze_mod_with_schema(
                     &d.manifest.id,
                     files.iter().map(|(n, s)| (n.as_str(), s.as_str())),
                     schema,
                 );
+                apply_mml_hook_declarations(&d.manifest, &mut intent);
                 out.push(intent);
             }
             Err(e) => {
@@ -318,10 +325,12 @@ fn analyze_active_profile_inner(
                     error = %e,
                     "analyzer: failed to read mod scripts; skipping",
                 );
-                out.push(ModIntent {
+                let mut intent = ModIntent {
                     mod_id: d.manifest.id.clone(),
                     ..Default::default()
-                });
+                };
+                apply_mml_hook_declarations(&d.manifest, &mut intent);
+                out.push(intent);
             }
         }
     }
