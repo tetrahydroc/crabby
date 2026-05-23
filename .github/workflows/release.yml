@@ -7,9 +7,15 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
-# The tag is plain `v<workspace.package.version>`. Patch is a global
-# monotonic counter (see scripts/prepare-release.sh) so every version
-# string occurred exactly once, no SHA suffix needed.
+# Master ships the FULL (non-prerelease) build. The version is whatever
+# `development` carried in through the dev->master merge — it was
+# already computed + bumped by `prepare-release.yml` on the dev side,
+# so this workflow only reads `Cargo.toml`, it never recomputes.
+#
+# Prerelease builds happen earlier, on `development`, via
+# `prerelease.yml`. By the time a version reaches master it has had one
+# or more `v<version>-rc.N` prereleases; master publishes the clean
+# `v<version>` tag.
 #
 # Only one release runs at a time per branch so concurrent pushes
 # don't race on tag creation.
@@ -170,7 +176,9 @@ jobs:
             artifacts/crabby-linux-x86_64/crabby-linux-x86_64.tar.gz
             artifacts/crabby-windows-x86_64/crabby-windows-x86_64.zip
           draft: false
-          prerelease: true
+          # Full release: master is the stable line. Prerelease builds
+          # are published separately from `development` by prerelease.yml.
+          prerelease: false
           fail_on_unmatched_files: true
 
   noop:
@@ -182,7 +190,7 @@ jobs:
       - name: Log skip
         run: |
           echo "Tag ${{ needs.resolve-version.outputs.tag }} already exists; nothing to release." >> "$GITHUB_STEP_SUMMARY"
-          echo "This usually means the master push was a docs/ci/style-only merge that didn't bump the version. The prepare-release workflow on the PR will have reflected this." >> "$GITHUB_STEP_SUMMARY"
+          echo "This means the version in Cargo.toml was already released. Usually a docs/ci/style-only merge reached master without a version bump (those don't bump on the development side either)." >> "$GITHUB_STEP_SUMMARY"
 
   sync-development:
     name: fast-forward development to master

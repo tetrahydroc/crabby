@@ -1,51 +1,48 @@
 name: prepare-release
 
-# Runs on every PR open / sync / reopen targeting master from
-# development. Walks the commits in development that aren't on master,
-# classifies them by their conventional-commit verb, computes the next
-# version per the project's rules (patch is a monotonic global counter;
+# Runs on every push to `development`. Walks the commits on development
+# that aren't yet on master, classifies them by conventional-commit
+# verb, computes the next version (patch is a monotonic global counter;
 # `!` adds a minor; `!!` resets minor and bumps major), renders the
-# changelog, commits the version bump to development (if any), and
-# updates the PR description.
+# per-version changelog file, and commits the version bump back to
+# development.
 #
-# The actual binary release runs from `release.yml` after the PR
-# merges. This workflow's job is purely to prepare the dev branch +
-# the PR body so the merge ships a coherent release.
+# The bump commit pushed here is itself a push to development, which
+# re-fires this workflow AND fires `prerelease.yml`. The bot-commit
+# subject guard below stops the loop here; `prerelease.yml` keys off
+# the now-bumped Cargo.toml to build + tag `v<version>-rc.N`.
+#
+# Full (non-prerelease) builds happen later from `release.yml` once
+# development merges into master; master inherits the version this
+# workflow already bumped, so no recompute happens there.
 
 on:
-  pull_request:
-    branches: [master]
-    types: [opened, synchronize, reopened]
+  push:
+    branches: [development]
 
-# Only one prepare-release per PR at a time. Concurrent runs would
-# race on the dev-branch push.
+# One prepare-release per branch at a time. Concurrent runs would race
+# on the dev-branch push.
 concurrency:
-  group: prepare-release-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: prepare-release-development
+  cancel-in-progress: false
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   prepare:
-    # Only fire when the PR comes from `development`. Other branches
-    # targeting master (hotfix branches, manual releases) skip this
-    # auto-bump path; the maintainer handles those manually.
-    if: github.event.pull_request.head.ref == 'development'
     runs-on: ubuntu-latest
     steps:
       # Wire up the deploy key BEFORE checkout. The `development` branch
-      # is protected by a "PRs only" ruleset; the only bypass actor we
-      # added is the Deploy Key, so the push at the end of this job has
-      # to come through SSH using that key. checkout@v4 with ssh-key
+      # is protected by a "PRs only" ruleset; the only bypass actor is
+      # the Deploy Key, so the bump push at the end of this job has to
+      # come through SSH using that key. checkout@v4 with ssh-key
       # configures the repo's git remote to use SSH for both fetch and
-      # push, so subsequent `git push` calls authenticate via the key.
+      # push.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: development
           # Need enough history that `master..development` resolves.
-          # Full history is simpler in CI and the repo is small.
           fetch-depth: 0
           ssh-key: ${{ secrets.RELEASE_BOT_SSH_KEY }}
 
@@ -61,13 +58,10 @@ jobs:
       - name: Bail if HEAD is our own bump commit
         id: head_check
         # The workflow's own push to `development` triggers a fresh
-        # `pull_request.synchronize` event, re-running this workflow.
-        # If the HEAD of development is the bot's `chore(release): bump
-        # version to X.Y.Z` commit, the previous run already did the
-        # work; bail before doing anything else. Belt-and-suspenders
-        # against the filter inside the script: if both guards fail
-        # simultaneously we'd loop, so the workflow stops here on the
-        # second cycle regardless.
+        # `push` event, re-running this workflow. If HEAD is the bot's
+        # `chore(release): bump version to X.Y.Z` commit, the previous
+        # run already did the work; bail before doing anything else.
+        # Belt-and-suspenders with the subject filter inside the script.
         run: |
           head_subject=$(git log -1 --format=%s HEAD)
           echo "HEAD subject: $head_subject"
@@ -82,8 +76,10 @@ jobs:
         if: steps.head_check.outputs.skip != 'true'
         id: prep
         env:
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          # master is the comparison base: development commits not yet
+          # on master are what the next release will ship.
+          BASE_REF: master
+          HEAD_REF: development
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         # Invoked via `bash` explicitly rather than as an executable
         # since the +x bit doesn't always survive cross-platform
@@ -105,46 +101,7 @@ jobs:
           cargo update --workspace --offline 2>/dev/null || cargo update --workspace || true
           git add Cargo.toml Cargo.lock ".github/changelog/${{ steps.prep.outputs.new_version }}.md"
           git commit -m "chore(release): bump version to ${{ steps.prep.outputs.new_version }}"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
-
-      - name: Update PR description with rendered changelog
-        if: steps.head_check.outputs.skip != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          CHANGELOG_PATH: ${{ steps.prep.outputs.changelog_path }}
-          OLD_VERSION: ${{ steps.prep.outputs.old_version }}
-          NEW_VERSION: ${{ steps.prep.outputs.new_version }}
-          BUMP: ${{ steps.prep.outputs.bump }}
-        run: |
-          # Build the body with a sentinel comment so a future re-run
-          # of this workflow can replace its own previous output rather
-          # than appending forever. Anything between the markers gets
-          # replaced; anything outside is preserved (lets the PR
-          # author add their own notes above the auto-generated block).
-          body_file=$(mktemp)
-          existing=$(gh pr view "$PR_NUMBER" --json body --jq .body 2>/dev/null || echo "")
-
-          # Strip the previous auto-block if present.
-          if [[ -n "$existing" ]]; then
-            printf '%s' "$existing" | awk '
-              /<!-- crabby-release-bot:start -->/ { skipping=1; next }
-              /<!-- crabby-release-bot:end -->/   { skipping=0; next }
-              !skipping { print }
-            ' > "$body_file"
-            # Trim trailing blank lines so we don't accumulate them.
-            sed -i -e :a -e '/^\s*$/{$d;N;ba' -e '}' "$body_file"
-            echo "" >> "$body_file"
-          fi
-
-          {
-            echo "<!-- crabby-release-bot:start -->"
-            echo "<!-- This block is auto-generated by prepare-release.yml. Edits inside the markers will be overwritten on the next sync. -->"
-            cat "$CHANGELOG_PATH"
-            echo "<!-- crabby-release-bot:end -->"
-          } >> "$body_file"
-
-          gh pr edit "$PR_NUMBER" --body-file "$body_file"
+          git push origin HEAD:development
 
       - name: Summary
         if: steps.head_check.outputs.skip != 'true'

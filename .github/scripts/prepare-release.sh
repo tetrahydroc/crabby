@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
-# Compute the next version and rendered changelog for a development -> master
-# release PR. Run from the prepare-release.yml workflow on PR open/sync.
+# Compute the next version and rendered changelog for the commits on
+# `development` that aren't yet on `master`. Run from prepare-release.yml
+# on every push to `development`.
+#
+# Each changelog bullet carries: the commit subject (with the
+# conventional-commit verb/scope stripped for display), the author, a
+# link to the commit (and to the squash-merge PR when the `(#N)` suffix
+# is present), and a collapsed <details> block with the commit's body
+# message (trailers like `Co-Authored-By:` stripped).
 #
 # Each changelog bullet carries: the commit subject (with the
 # conventional-commit verb/scope stripped for display), the author, a
@@ -304,7 +311,7 @@ changelog_path="$(mktemp -t crabby-changelog.XXXXXX.md)"
     if [[ "$bump_label" == "none" ]]; then
         echo "## No release"
         echo
-        echo "This PR contains only \`docs\`, \`ci\`, or \`style\` changes. Merging will update the repo but won't bump the version or trigger a binary build."
+        echo "The new commits on \`development\` are only \`docs\`, \`ci\`, or \`style\` changes. No version bump, no prerelease build."
         echo
     else
         echo "## crabby v${new_version}"
